@@ -10,6 +10,14 @@ One AllStar dashboard that keeps the part of each existing monitor that is actua
 
 Everything is original code. The pieces that age badly stay out: per-button PHP permission files, HTML built inside the poller, a websocket port per node, one AMI session per browser, and shell commands as the control path.
 
+<p align="center">
+  <a href="images/sm-elite-main.png" title="Click to enlarge">
+    <img src="images/sm-elite-main.png" alt="SM-Elite dashboard with the control bar, live node cards, last heard, and favorites" width="640">
+  </a>
+  <br>
+  <sub>Click the screenshot to see it full size.</sub>
+</p>
+
 ## Features
 
 - **Live node cards** with every connected link, direction, mode, and transmit state, plus the Supermon-style status block.
@@ -88,29 +96,6 @@ The `.deb` lands in `dist/`. The build runs the test suite first. Bump the versi
 
 Push a tag that matches the changelog version, for example `git tag v0.2.8 && git push origin v0.2.8`. The Release workflow tests on Debian 12, builds on Debian 13, attaches the `.deb` to a GitHub release, and asks the hardenedpenguin apt repository to publish it. That last step needs the `APT_REPO_DISPATCH_TOKEN` repository secret; without it the release still succeeds and the apt repository picks the package up on its daily run.
 
-## Install from a checkout
-
-For development, or a node where you want the code somewhere other than `/usr/share`, run the installer from a checkout instead of using the package:
-
-```bash
-sudo ./deploy/install.sh --user <account> --callsign <CALL> --location "<City, State>"
-```
-
-It does the same setup as the package, running as the account you name and keeping the config in `/etc/sm-elite` (or the checkout's `config/` folder when that already holds a real config). It refuses to run when the package is installed.
-
-Useful options:
-
-| Option | Effect |
-| --- | --- |
-| `--admin` | Install the root helper and sudoers rule, and turn on the admin tools |
-| `--listen 10.8.0.7` | Also listen on this address on the dashboard port (comma-separated for several) |
-| `--port 8420` | Dashboard port |
-| `--no-https` | Skip the Apache proxy |
-| `--app-dir /opt/sm-elite` | Copy the code there instead of running from the checkout |
-| `--force-config` | Regenerate `smelite.ini` and `nodes.ini`, backing up the old ones first |
-
-Run it again after updating the code. Existing config files are kept, and the service, helper, and Apache snippet are refreshed. `./deploy/install.sh --help` lists every option.
-
 ## HTTPS
 
 `deploy/apache-sm-elite.conf` proxies `/sm-elite/` to the dashboard on `127.0.0.1`, including the websocket. It works inside the existing ASL3 Apache site, so it shares that site's certificate. The stock certificate is self-signed, so browsers warn once. With a real hostname, `certbot --apache` replaces it.
@@ -142,7 +127,7 @@ Text-to-speech needs `piper` and `sox` on the node and at least one voice in `/v
 
 ## DVSwitch
 
-For a node with a DVSwitch bridge (Analog_Bridge and MMDVM_Bridge), edit `dvswitch.ini` in the config folder (the package and the installer put a commented copy there):
+For a node with a DVSwitch bridge (Analog_Bridge and MMDVM_Bridge), edit `/etc/sm-elite/dvswitch.ini` (the package puts a commented copy there):
 
 ```ini
 [node 1999]
@@ -168,7 +153,7 @@ A DVSwitch button then appears in the control bar for that node. SM-Elite talks 
 
 ## Admin tools and root access
 
-The dashboard runs as an ordinary account. Anything that needs root goes through one small script, `smelite-admin` (`/usr/lib/sm-elite/` from the package, `/usr/local/sbin/` from a checkout install), which that account may run with `sudo` and nothing else. The helper:
+The dashboard runs as an ordinary account. Anything that needs root goes through one small script, `/usr/lib/sm-elite/smelite-admin`, which that account may run with `sudo` and nothing else. The helper:
 
 - writes only `rpt.conf`, `iax.conf`, and `extensions.conf`, and only when the file still matches the version the editor loaded
 - keeps the last 20 versions of each file in `/var/backups/smelite` (mode 600)
@@ -184,8 +169,9 @@ Every change made from the Admin page asks for the admin's password again.
 - `web/` the dashboard (plain HTML, CSS, and JavaScript, with no build step)
 - `config/` demo config and examples
 - `debian/` Debian packaging
-- `deploy/` package build script, checkout installer, config generator, systemd unit, Apache snippet, root helper, sudoers rule
-- `data/` SQLite users, sessions, last heard, and the node directory cache (demo and in-place installs)
+- `deploy/` package build script, config generator, Apache snippet, root helper
+- `data/` SQLite users, sessions, last heard, and the node directory cache for the demo
+- `images/` screenshots for this README
 
 Node snapshots, last heard, and the favorites scan arrive on `/ws`. Commands are `POST /api/command` and stay off the socket.
 
@@ -194,3 +180,15 @@ Node snapshots, last heard, and the favorites scan arrive on `/ws`. Commands are
 ```bash
 python3 -m unittest discover -s tests
 ```
+
+## Thanks
+
+SM-Elite exists because these projects showed what a good AllStar dashboard looks like. Thank you to their developers:
+
+- **[Allmon3](https://github.com/AllStarLink/Allmon3)** by Jason McCormick, N8EI, and the AllStarLink team, for the single-poller design, JSON snapshots, and the clear split between watching and controlling a node.
+- **[AllScan](https://github.com/davidgsd/AllScan)** by David Gleason, NR9V, for favorites with live activity from the AllStar stats service.
+- **Supermon** by Tim Sawyer, WD6AWP, and later Paul Aidukas, KN2R, for the control bar, the `favorites.ini` format, and the node status block that every AllStar operator knows.
+- **[supermon-ng](https://github.com/hardenedpenguin/supermon-ng)** for carrying Supermon forward, and for the DVSwitch mode and talkgroup layout SM-Elite imports.
+- **[DVSwitch](https://dvswitch.org/)** by Mike Zingman, N4IRR, and Steve Zingman, N4IRS, for Analog_Bridge and MMDVM_Bridge.
+- **[Piper](https://github.com/rhasspy/piper)** by Michael Hansen and the Rhasspy project, for the text-to-speech voices behind Announce.
+- **[AllStarLink](https://www.allstarlink.org/)** and its volunteers, for the network and the ASL3 platform this runs on.

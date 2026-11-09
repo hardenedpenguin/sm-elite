@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-"""Write SM-Elite's config for this node. Called by install.sh as root.
+"""Write SM-Elite's config for this node. Called by the package postinst as root.
 
 Reads the node numbers from rpt.conf and the AMI login from manager.conf, so
 a fresh install works without typing either. Files that already exist are
@@ -100,7 +100,7 @@ def nodes_ini(nodes: list[str], ami: dict) -> str:
 
 def smelite_ini(*, listen: list[str], port: int, data_dir: Path, favorites_dir: Path, callsign: str,
                 location: str, admin: bool, services: list[str],
-                helper: str = "/usr/local/sbin/smelite-admin") -> str:
+                helper: str = "/usr/lib/sm-elite/smelite-admin") -> str:
     return f"""; Written by SM-Elite setup. Edit freely; upgrades will not overwrite it.
 ; Restart after editing: sudo systemctl restart sm-elite
 [server]
@@ -360,7 +360,7 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--callsign", default="")
     parser.add_argument("--location", default="")
     parser.add_argument("--admin", action="store_true")
-    parser.add_argument("--helper", default="/usr/local/sbin/smelite-admin")
+    parser.add_argument("--helper", default="/usr/lib/sm-elite/smelite-admin")
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--rpt-conf", type=Path, default=Path("/etc/asterisk/rpt.conf"))
     parser.add_argument("--manager-conf", type=Path, default=Path("/etc/asterisk/manager.conf"))

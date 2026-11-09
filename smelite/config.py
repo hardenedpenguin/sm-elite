@@ -76,7 +76,7 @@ class Settings:
     admin_enabled: bool = False
     admin_config_dir: Path = Path("/etc/asterisk")
     admin_log_file: Path = Path("/var/log/asterisk/messages.log")
-    admin_helper: str = "/usr/local/sbin/smelite-admin"
+    admin_helper: str = "/usr/lib/sm-elite/smelite-admin"
     sounds_dir: Path = Path("/usr/local/share/asterisk/sounds")
     voices_dir: Path = Path("/var/lib/piper-tts")
     piper: str = "/usr/bin/piper"
