@@ -14,7 +14,7 @@ jobs:
     container: debian:bookworm
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install Python dependencies
         run: |
@@ -30,7 +30,7 @@ jobs:
     container: debian:trixie
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install build dependencies
         run: |
