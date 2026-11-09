@@ -1,5 +1,18 @@
 # SM-Elite
 
+[![Release](https://img.shields.io/github/v/release/hardenedpenguin/sm-elite?style=flat-square&label=release)](https://github.com/hardenedpenguin/sm-elite/releases)
+[![Downloads](https://img.shields.io/github/downloads/hardenedpenguin/sm-elite/total?style=flat-square)](https://github.com/hardenedpenguin/sm-elite/releases)
+[![Build](https://img.shields.io/github/actions/workflow/status/hardenedpenguin/sm-elite/release.yml?style=flat-square&label=build)](https://github.com/hardenedpenguin/sm-elite/actions/workflows/release.yml)
+[![Last commit](https://img.shields.io/github/last-commit/hardenedpenguin/sm-elite?style=flat-square)](https://github.com/hardenedpenguin/sm-elite/commits/main)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
+[![Install: apt](https://img.shields.io/badge/install-apt-A81D33?style=flat-square&logo=debian&logoColor=white)](https://hardenedpenguin.github.io/hardenedpenguin-apt/)
+
+![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white)
+![aiohttp](https://img.shields.io/badge/aiohttp-asyncio-2C5BB4?style=flat-square&logo=aiohttp&logoColor=white)
+![Platform](https://img.shields.io/badge/platform-Debian%20%2F%20ASL3-A81D33?style=flat-square&logo=debian&logoColor=white)
+
+> **Install and upgrades:** SM-Elite installs and updates through the **Debian `.deb` package**. Use the [hardenedpenguin APT repository](https://hardenedpenguin.github.io/hardenedpenguin-apt/) (`sudo apt install sm-elite`) or download a `.deb` from [Releases](https://github.com/hardenedpenguin/sm-elite/releases). See [Install on a node](#install-on-a-node-debian-package).
+
 One AllStar dashboard that keeps the part of each existing monitor that is actually good at its job.
 
 | From | What SM-Elite keeps |
