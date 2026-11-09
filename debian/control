@@ -1,0 +1,37 @@
+Source: sm-elite
+Section: web
+Priority: optional
+Maintainer: Jory A. Pratt <geekypenguin@gmail.com>
+Build-Depends: debhelper-compat (= 13),
+               python3 (>= 3.11),
+               python3-aiohttp,
+               python3-yaml
+Standards-Version: 4.7.0
+Rules-Requires-Root: no
+
+Package: sm-elite
+Architecture: all
+Depends: ${misc:Depends},
+         python3 (>= 3.11),
+         python3-aiohttp,
+         python3-yaml,
+         adduser,
+         sudo,
+         apache2 (>= 2.4.47)
+Recommends: asl3-asterisk
+Suggests: asl3-tts,
+          sox
+Description: AllStar node dashboard
+ SM-Elite is a web dashboard for AllStarLink 3 nodes. One service holds the
+ Asterisk manager connection and pushes live node status to every browser
+ over a single websocket.
+ .
+ It shows connected links, keyups, last heard, voters, and favorites with
+ network activity, and lets operators connect, monitor, disconnect, send
+ DTMF, make text-to-speech announcements, manage allow and deny lists, and
+ switch DVSwitch modes and talkgroups. Admins can reload or restart Asterisk,
+ edit rpt.conf, iax.conf, and extensions.conf with automatic backups, and
+ manage users.
+ .
+ The package configures itself from rpt.conf and manager.conf and publishes
+ the dashboard through Apache at /sm-elite/.

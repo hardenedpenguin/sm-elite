@@ -1,0 +1,17 @@
+[Unit]
+Description=SM-Elite AllStar dashboard
+After=network-online.target asterisk.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=smelite
+Group=smelite
+WorkingDirectory=/usr/share/sm-elite
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/python3 -m smelite --config /etc/sm-elite/smelite.ini
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

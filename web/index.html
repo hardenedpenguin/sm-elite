@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>SM-Elite</title>
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <span id="tx-dot" class="tx-dot" aria-hidden="true"></span>
+      <div>
+        <h1 id="site-title">SM-Elite</h1>
+        <p id="site-sub"></p>
+      </div>
+    </div>
+    <div class="top-actions">
+      <span id="health" class="pill">…</span>
+      <button id="theme-btn" type="button">Light</button>
+      <button id="touch-btn" type="button">Touch</button>
+      <button id="display-btn" type="button">Display</button>
+      <button id="users-btn" type="button" hidden>Users</button>
+      <button id="alerts-btn" type="button">Alerts</button>
+      <button id="system-btn" type="button" hidden>System</button>
+      <button id="admin-btn" type="button" hidden>Admin</button>
+      <button id="login-btn" type="button">Log in</button>
+    </div>
+  </header>
+  <p id="welcome" class="welcome"></p>
+  <p id="setup-banner" class="banner" hidden></p>
+  <nav id="node-nav" class="node-nav" aria-label="Nodes"></nav>
+  <section id="control" class="control" aria-label="Node control"></section>
+  <main class="layout">
+    <section id="nodes" class="nodes" aria-live="polite"></section>
+    <aside class="side">
+      <section id="finder" class="panel" aria-label="Find a node">
+        <h2>Find a node</h2>
+        <input id="finder-q" type="search" autocomplete="off" spellcheck="false"
+          placeholder="Callsign, city, hub name, or node number" aria-label="Search the AllStar node directory">
+        <p id="finder-note" class="muted small"></p>
+        <div id="finder-results"></div>
+      </section>
+      <section id="heard" class="panel" aria-label="Last heard" hidden></section>
+      <section id="favorites" class="panel" aria-label="Favorites"></section>
+      <section id="voters" class="panel" aria-label="Voters" hidden></section>
+    </aside>
+  </main>
+  <footer class="legend" aria-label="Color key">
+    <span class="legend-title">Key</span>
+    <span class="key local">Local</span>
+    <span class="key network">Network</span>
+    <span class="key telemetry">Telemetry</span>
+    <span class="key playback">Playback</span>
+    <span class="key heat">Favorite activity</span>
+    <span class="key linked">Connected</span>
+  </footer>
+
+  <dialog id="login-dialog">
+    <form id="login-form" method="dialog">
+      <h2>Log in</h2>
+      <label>Username <input name="username" autocomplete="username" required></label>
+      <label>Password <input name="password" type="password" autocomplete="current-password" required></label>
+      <p id="login-error" class="form-error"></p>
+      <div class="dialog-actions">
+        <button id="login-cancel" type="button" class="ghost">Cancel</button>
+        <button type="submit">Log in</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="setup-dialog">
+    <form id="setup-form" method="dialog">
+      <h2>Create the admin account</h2>
+      <p class="hint">This account can control nodes and add operators. Pick a password of at least 8 characters.</p>
+      <label>Username <input name="username" autocomplete="username" required></label>
+      <label>Password <input name="password" type="password" autocomplete="new-password" minlength="8" required></label>
+      <div id="setup-code-wrap" hidden>
+        <label>Setup code <input name="code" id="setup-code" autocomplete="off" spellcheck="false" placeholder="XXXX-XXXX-XXXX"></label>
+        <p class="hint">Proves you own this node. On the node, run <code id="setup-code-cmd"></code></p>
+      </div>
+      <p id="setup-error" class="form-error"></p>
+      <div class="dialog-actions">
+        <button id="setup-later" type="button" class="ghost">Watch first</button>
+        <button type="submit">Create admin</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="users-dialog">
+    <form id="users-form">
+      <h2>Users</h2>
+      <div id="user-list"></div>
+      <h3>Add a user</h3>
+      <label>Username <input name="username" required></label>
+      <label>Password <input name="password" type="password" minlength="8" required></label>
+      <label>Role
+        <select name="role">
+          <option value="operator">Operator</option>
+          <option value="viewer">Viewer</option>
+          <option value="admin">Admin</option>
+        </select>
+      </label>
+      <label>Node limit <input name="nodes" placeholder="blank = all nodes"></label>
+      <p id="users-error" class="form-error"></p>
+      <div class="dialog-actions">
+        <button type="button" id="users-close" class="ghost">Close</button>
+        <button type="submit">Add user</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="access-dialog" class="wide">
+    <h2 id="access-title">Who can connect</h2>
+    <p id="access-mode" class="hint"></p>
+    <div class="access-grid">
+      <section><h3>Allow list</h3><div id="access-allow"></div></section>
+      <section><h3>Deny list</h3><div id="access-deny"></div></section>
+    </div>
+    <form id="access-form">
+      <h3>Add a node</h3>
+      <div class="access-fields">
+        <label>Node <input name="target" inputmode="numeric" pattern="[0-9]{1,8}" maxlength="8" required></label>
+        <label>Comment <input name="comment" maxlength="50" placeholder="optional"></label>
+        <label>List
+          <select name="list">
+            <option value="deny">Deny: refuse this node</option>
+            <option value="allow">Allow: only listed nodes may connect</option>
+          </select>
+        </label>
+      </div>
+      <label class="check"><input type="checkbox" name="disconnect" checked> Disconnect it now if it is linked (deny only)</label>
+      <p id="access-error" class="form-error"></p>
+      <div class="dialog-actions">
+        <button type="submit">Add</button>
+      </div>
+    </form>
+    <p id="access-readonly" class="hint" hidden>Only admins can change these lists.</p>
+    <div class="dialog-actions">
+      <button type="button" id="access-close" class="ghost">Close</button>
+    </div>
+  </dialog>
+
+  <dialog id="sounds-dialog" class="wide">
+    <h2 id="sounds-title">Announce</h2>
+    <fieldset class="scope">
+      <legend>Play on</legend>
+      <label class="check"><input type="radio" name="sound-scope" value="local" checked> This node's radio only</label>
+      <label class="check"><input type="radio" name="sound-scope" value="links"> This node and every connected link</label>
+    </fieldset>
+    <section id="tts">
+      <h3>Say something</h3>
+      <label>Text <textarea id="tts-text" rows="3"></textarea></label>
+      <p id="tts-count" class="hint"></p>
+      <div class="file-bar">
+        <label class="inline">Voice <select id="tts-voice"></select></label>
+        <button type="button" id="tts-speak">Speak</button>
+      </div>
+      <div id="tts-save" class="file-bar" hidden>
+        <input id="tts-name" placeholder="announcement-name" maxlength="40" aria-label="Announcement name">
+        <button type="button" id="tts-save-btn" class="ghost">Save as announcement</button>
+      </div>
+    </section>
+    <p id="tts-off" class="hint" hidden>Text-to-speech needs piper, sox, and a voice in /var/lib/piper-tts.</p>
+    <section>
+      <h3>Saved sounds</h3>
+      <div id="sound-list"></div>
+    </section>
+    <p id="sounds-status" class="hint"></p>
+    <div class="dialog-actions">
+      <button type="button" id="sounds-close" class="ghost">Close</button>
+    </div>
+  </dialog>
+
+  <dialog id="dvs-dialog" class="wide">
+    <h2 id="dvs-title">DVSwitch</h2>
+    <p id="dvs-now" class="dvs-now"></p>
+    <nav class="tabs" id="dvs-modes" aria-label="Digital modes"></nav>
+    <div class="file-bar" id="dvs-mode-bar">
+      <label class="inline" id="dvs-net-wrap" hidden>Network <select id="dvs-net"></select></label>
+      <button type="button" id="dvs-switch" class="ghost">Switch mode</button>
+    </div>
+    <div id="dvs-list"></div>
+    <div class="file-bar">
+      <input id="dvs-custom" placeholder="Other talkgroup, reflector, or host:port" maxlength="64" aria-label="Other talkgroup">
+      <button type="button" id="dvs-custom-btn">Tune</button>
+    </div>
+    <p id="dvs-status" class="hint"></p>
+    <div class="dialog-actions">
+      <button type="button" id="dvs-restart" class="ghost" hidden>Restart bridge services</button>
+      <button type="button" id="dvs-refresh" class="ghost">Refresh</button>
+      <button type="button" id="dvs-close" class="ghost">Close</button>
+    </div>
+  </dialog>
+
+  <dialog id="display-dialog" class="wide">
+    <h2>Display</h2>
+    <p class="hint">Choose what this browser shows. Other browsers and users keep their own choices.</p>
+    <div id="display-groups" class="display-groups"></div>
+    <label class="inline">Last heard rows
+      <select id="display-heard-rows">
+        <option value="5">5</option>
+        <option value="10">10</option>
+        <option value="25">25</option>
+        <option value="50">50</option>
+      </select>
+    </label>
+    <div class="dialog-actions">
+      <button type="button" id="display-reset" class="ghost">Show everything</button>
+      <button type="button" id="display-close">Done</button>
+    </div>
+  </dialog>
+
+  <dialog id="alerts-dialog">
+    <h2>Keyup alerts</h2>
+    <p class="hint">Alerts come from the nodes shown on this page, in this browser only. Keep the tab open; it can be in the background.</p>
+    <label class="check"><input type="checkbox" id="alerts-on"> Alert me when someone keys up</label>
+    <fieldset class="scope">
+      <legend>Who</legend>
+      <label class="check"><input type="radio" name="alerts-who" value="any" checked> Anyone, on any node shown here</label>
+      <label class="check"><input type="radio" name="alerts-who" value="list"> Only these nodes</label>
+      <input id="alerts-nodes" placeholder="2000, 27339, local" aria-label="Nodes to alert on">
+      <p class="hint">Node numbers separated by commas. Add "local" for the node's own radio. Talkers behind a hub show up as the hub's node number.</p>
+    </fieldset>
+    <label class="check"><input type="checkbox" id="alerts-sound" checked> Play a chime</label>
+    <label class="check"><input type="checkbox" id="alerts-desktop"> Desktop notification</label>
+    <p id="alerts-desktop-note" class="hint" hidden></p>
+    <label>Quiet time per node (seconds)
+      <input id="alerts-quiet" type="number" min="0" max="3600" value="30">
+    </label>
+    <div class="dialog-actions">
+      <button type="button" id="alerts-test" class="ghost">Test</button>
+      <button type="button" id="alerts-close">Done</button>
+    </div>
+  </dialog>
+
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+
+  <dialog id="system-dialog" class="wider">
+    <h2 id="system-title">System</h2>
+    <nav class="tabs" aria-label="System sections">
+      <button type="button" data-systab="server" class="on">Server</button>
+      <button type="button" data-systab="database" id="system-db-tab">AllStar database</button>
+      <button type="button" id="system-refresh" class="ghost">Refresh</button>
+    </nav>
+    <section data-syspanel="server">
+      <div id="system-grid" class="sys-grid"></div>
+    </section>
+    <section data-syspanel="database" hidden>
+      <div class="file-bar">
+        <label class="inline">Node <select id="db-node"></select></label>
+        <input id="db-filter" type="search" placeholder="Filter keys and values" aria-label="Filter database">
+      </div>
+      <p id="db-count" class="hint"></p>
+      <div id="db-table" class="db-table"></div>
+    </section>
+    <p id="system-status" class="hint"></p>
+    <div class="dialog-actions">
+      <button type="button" id="system-close" class="ghost">Close</button>
+    </div>
+  </dialog>
+
+  <dialog id="admin-dialog" class="wider">
+    <h2>Admin</h2>
+    <nav class="tabs" aria-label="Admin sections">
+      <button type="button" data-tab="system" class="on">Node &amp; server</button>
+      <button type="button" data-tab="files">Config files</button>
+      <button type="button" data-tab="log">Asterisk log</button>
+    </nav>
+    <label class="admin-pass">Your password (needed for anything that changes the node)
+      <input id="admin-password" type="password" autocomplete="current-password">
+    </label>
+    <p id="admin-helper" class="form-error" hidden></p>
+
+    <section data-panel="system">
+      <label>Node <select id="admin-node"></select></label>
+      <div class="admin-actions">
+        <div><button type="button" data-action="reload">Reload Asterisk config</button>
+          <p class="hint">Re-reads the config files. Links stay up.</p></div>
+        <div><button type="button" data-action="rpt_restart">Restart app_rpt</button>
+          <p class="hint">Applies rpt.conf changes. All links drop and reconnect in a few seconds.</p></div>
+        <div><button type="button" data-action="asterisk_restart">Restart Asterisk</button>
+          <p class="hint">Full restart. Links are down for about 20 seconds.</p></div>
+        <div><button type="button" data-action="reboot" class="danger">Reboot the server</button>
+          <p class="hint">The dashboard goes offline for a minute or two.</p></div>
+        <div><button type="button" data-action="poweroff" class="danger">Shut down the server</button>
+          <p class="hint">It stays off until someone powers it back on by hand.</p></div>
+      </div>
+    </section>
+
+    <section data-panel="files" hidden>
+      <div class="file-bar">
+        <select id="admin-file"></select>
+        <button type="button" id="admin-file-reload" class="ghost">Reload from disk</button>
+        <button type="button" id="admin-file-backups" class="ghost">Backups</button>
+        <button type="button" id="admin-file-save">Save</button>
+      </div>
+      <div id="admin-backups" hidden>
+        <div id="admin-backup-list"></div>
+        <pre id="admin-diff" class="log diff" hidden></pre>
+      </div>
+      <textarea id="admin-text" spellcheck="false" wrap="off" rows="24"></textarea>
+      <p class="hint">Saving keeps a backup of the previous version in /var/backups/smelite. Changes take effect after a reload or restart.</p>
+    </section>
+
+    <section data-panel="log" hidden>
+      <div class="file-bar">
+        <span id="admin-log-file" class="muted"></span>
+        <button type="button" id="admin-log-refresh" class="ghost">Refresh</button>
+      </div>
+      <pre id="admin-log" class="log"></pre>
+    </section>
+
+    <p id="admin-status" class="hint"></p>
+    <div class="dialog-actions">
+      <button type="button" id="admin-close" class="ghost">Close</button>
+    </div>
+  </dialog>
+
+  <dialog id="result-dialog">
+    <h2 id="result-title">Command</h2>
+    <pre id="result-body"></pre>
+    <form method="dialog"><button value="ok">Close</button></form>
+  </dialog>
+
+  <script src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,2 @@
+# SM-Elite admin tools: the dashboard account may run only this helper as root.
+smelite ALL=(root) NOPASSWD: /usr/lib/sm-elite/smelite-admin

@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.venv/
+data/*.db
+data/*.txt
+data/*.json
+.pytest_cache/
+dist/
+debian/sm-elite/
+debian/.debhelper/
+debian/debhelper-build-stamp
+debian/files
+debian/*.substvars
+debian/*.debhelper
+debian/*.log

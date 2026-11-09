@@ -1,0 +1,47 @@
+#!/bin/sh
+set -e
+
+FIRST_RUN=
+if [ "$1" = "configure" ]; then
+    [ -s /var/lib/sm-elite/smelite.db ] || FIRST_RUN=1
+    if ! getent passwd smelite >/dev/null; then
+        adduser --system --group --home /var/lib/sm-elite --no-create-home smelite
+    fi
+    # Writes /etc/sm-elite from rpt.conf and manager.conf on first install;
+    # existing files are kept on upgrade.
+    python3 /usr/share/sm-elite/setup_config.py \
+        --config-dir /etc/sm-elite \
+        --data-dir /var/lib/sm-elite \
+        --examples /usr/share/sm-elite/examples \
+        --user smelite \
+        --listen 127.0.0.1 \
+        --port 8420 \
+        --admin \
+        --helper /usr/lib/sm-elite/smelite-admin \
+        || echo "sm-elite: could not write /etc/sm-elite; see the messages above" >&2
+fi
+
+if [ -e /usr/share/apache2/apache2-maintscript-helper ]; then
+    . /usr/share/apache2/apache2-maintscript-helper
+    apache2_invoke enmod proxy_http
+    apache2_invoke enmod headers
+    apache2_invoke enconf sm-elite
+fi
+
+#DEBHELPER#
+
+if [ -n "$FIRST_RUN" ]; then
+    code_file=/var/lib/sm-elite/setup-code
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+        [ -s "$code_file" ] && break
+        sleep 0.5
+    done
+    echo "SM-Elite: open http://$(hostname -f 2>/dev/null || hostname)/sm-elite/ and create the admin account."
+    if [ -s "$code_file" ]; then
+        echo "SM-Elite: setup code $(cat "$code_file") (also in $code_file)"
+    else
+        echo "SM-Elite: the setup code will be in $code_file once the service starts"
+    fi
+fi
+
+exit 0

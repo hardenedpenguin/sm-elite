@@ -1,0 +1,72 @@
+sm-elite (0.2.8) unstable; urgency=medium
+
+  * Control bar buttons use the same filled style as the rest of the page;
+    the disconnect group is solid red.
+
+ -- Jory A. Pratt <geekypenguin@gmail.com>  Sun, 08 Nov 2026 20:05:00 -0600
+
+sm-elite (0.2.7) unstable; urgency=medium
+
+  * Control bar redesign: fields on top with a compact 15-character target
+    box and stacked options, operator tools on the right, and grouped
+    command buttons below a divider.
+
+ -- Jory A. Pratt <geekypenguin@gmail.com>  Sun, 08 Nov 2026 20:05:00 -0600
+
+sm-elite (0.2.6) unstable; urgency=medium
+
+  * Control bar: Announce, Who can connect, and DVSwitch sit on their own
+    row, centered under the other buttons.
+
+ -- Jory A. Pratt <geekypenguin@gmail.com>  Sun, 08 Nov 2026 20:00:00 -0600
+
+sm-elite (0.2.5) unstable; urgency=medium
+
+  * DVSwitch: import supermon-ng's dvswitch_config.yml into dvswitch.ini on
+    install or upgrade, once, while no node is configured.
+  * DVSwitch: find each bridged node from its USRP rxchannel in rpt.conf,
+    with the matching ABInfo file and DVSwitch.ini (second bridges too).
+  * DVSwitch: treat YSFN/YSFW as YSF; bridge restart covers numbered units.
+  * DVSwitch: show the talkgroup number of password-protected entries.
+  * Depend on python3-yaml.
+
+ -- Jory A. Pratt <geekypenguin@gmail.com>  Sun, 08 Nov 2026 20:10:00 -0600
+
+sm-elite (0.2.4) unstable; urgency=medium
+
+  * Favorites: pair label[] and cmd[] by position, so files that list all
+    labels before all commands (supermon-ng) show every node.
+  * Favorites: read per-node [<node>] sections and mark them in the panel.
+
+ -- Jory A. Pratt <geekypenguin@gmail.com>  Sun, 08 Nov 2026 19:40:00 -0600
+
+sm-elite (0.2.3) unstable; urgency=medium
+
+  * Last heard shows the latest 5 entries by default.
+  * New Display dialog: each browser chooses which panels, node-card lines,
+    and connection table columns it shows, and how many last heard rows.
+
+ -- Jory A. Pratt <geekypenguin@gmail.com>  Sun, 08 Nov 2026 19:45:00 -0600
+
+sm-elite (0.2.2) unstable; urgency=medium
+
+  * Creating the first admin account needs a one-time setup code from
+    /var/lib/sm-elite/setup-code, so a node reachable from the internet
+    cannot be claimed by whoever finds the page first.
+
+ -- Jory A. Pratt <geekypenguin@gmail.com>  Sun, 08 Nov 2026 19:30:00 -0600
+
+sm-elite (0.2.1) unstable; urgency=medium
+
+  * Node status: load average and disk lines use the same text color as
+    the CPU line.
+  * The first-install hint prints only when no accounts exist yet.
+
+ -- Jory A. Pratt <geekypenguin@gmail.com>  Sun, 08 Nov 2026 19:15:00 -0600
+
+sm-elite (0.2.0) unstable; urgency=medium
+
+  * First Debian package. Configures itself from rpt.conf and manager.conf,
+    runs as the smelite system account, and is served by Apache at /sm-elite/.
+
+ -- Jory A. Pratt <geekypenguin@gmail.com>  Sun, 08 Nov 2026 19:00:00 -0600

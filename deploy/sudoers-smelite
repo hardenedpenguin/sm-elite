@@ -1,0 +1,3 @@
+# Install as /etc/sudoers.d/smelite (root:root 0440). Replace "smelite" with the
+# account the dashboard service runs as.
+smelite ALL=(root) NOPASSWD: /usr/local/sbin/smelite-admin

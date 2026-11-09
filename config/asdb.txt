@@ -1,0 +1,3 @@
+; Private node descriptions. Same columns as astdb.txt.
+; node|call|description|location
+; 1999|N0CALL|Shop radio|Bench

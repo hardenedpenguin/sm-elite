@@ -1,0 +1,9 @@
+smelite usr/share/sm-elite
+web usr/share/sm-elite
+deploy/setup_config.py usr/share/sm-elite
+deploy/smelite-admin usr/lib/sm-elite
+config/commands.ini usr/share/sm-elite/examples
+config/asdb.txt usr/share/sm-elite/examples
+config/favorites.ini usr/share/sm-elite/examples
+config/dvswitch.ini usr/share/sm-elite/examples
+config/nodes.ini usr/share/sm-elite/examples

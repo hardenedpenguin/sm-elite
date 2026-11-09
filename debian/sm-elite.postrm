@@ -1,0 +1,17 @@
+#!/bin/sh
+set -e
+
+if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
+    if [ -e /usr/share/apache2/apache2-maintscript-helper ]; then
+        . /usr/share/apache2/apache2-maintscript-helper
+        apache2_invoke disconf sm-elite
+    fi
+fi
+
+if [ "$1" = "purge" ]; then
+    rm -rf /etc/sm-elite /var/lib/sm-elite
+fi
+
+#DEBHELPER#
+
+exit 0
