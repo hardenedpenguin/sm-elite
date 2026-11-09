@@ -39,11 +39,17 @@ Requires Python 3.11 or newer and aiohttp (`apt install python3-aiohttp` on Debi
 
 ## Install on a node (Debian package)
 
-On an AllStarLink 3 node (Debian 12 or 13):
+On an AllStarLink 3 node (Debian 12 or 13), add the [hardenedpenguin apt repository](https://hardenedpenguin.github.io/hardenedpenguin-apt/) once, then install:
 
 ```bash
-sudo apt install ./sm-elite_0.2.0_all.deb
+cd /tmp
+curl -fsSLO https://hardenedpenguin.github.io/hardenedpenguin-apt/pool/main/h/hardenedpenguin-archive-keyring/hardenedpenguin-archive-keyring_1.2_all.deb
+sudo apt install ./hardenedpenguin-archive-keyring_1.2_all.deb
+sudo apt update
+sudo apt install sm-elite
 ```
+
+The `.deb` is also attached to each [GitHub release](https://github.com/hardenedpenguin/sm-elite/releases) for `sudo apt install ./sm-elite_<version>_all.deb`.
 
 Then open `http://<node>/sm-elite/`. On an ASL3 appliance, port 80 forwards to HTTPS, so you land on `https://<node>/sm-elite/`. The first visit asks you to create the admin account. That needs the one-time setup code the install prints, which is also in `/var/lib/sm-elite/setup-code` (`sudo cat` it), so nobody else who reaches the page first can claim the node.
 
@@ -56,7 +62,7 @@ The package:
 5. starts the `sm-elite` service on `127.0.0.1:8420` and publishes it through Apache at `/sm-elite/` on ports 80 and 443
 6. turns on the admin tools through `/usr/lib/sm-elite/smelite-admin` and its sudoers rule (set `[admin] enabled = no` to turn them off)
 
-**Updating** is the same command with the newer file: `sudo apt install ./sm-elite_<version>_all.deb`. Your config, users, and history are kept and the service restarts on the new version.
+**Updating**: `sudo apt update && sudo apt upgrade`, or install the newer release file the same way. Your config, users, and history are kept and the service restarts on the new version.
 
 **Removing**: `sudo apt remove sm-elite` keeps `/etc/sm-elite` and `/var/lib/sm-elite`; `sudo apt purge sm-elite` deletes them too.
 
@@ -77,6 +83,10 @@ sudo apt install debhelper python3-aiohttp
 ```
 
 The `.deb` lands in `dist/`. The build runs the test suite first. Bump the version in both `debian/changelog` (`dch -v <version>`) and `smelite/__init__.py`; the script refuses to build when they differ.
+
+### Releasing
+
+Push a tag that matches the changelog version, for example `git tag v0.2.8 && git push origin v0.2.8`. The Release workflow tests on Debian 12, builds on Debian 13, attaches the `.deb` to a GitHub release, and asks the hardenedpenguin apt repository to publish it. That last step needs the `APT_REPO_DISPATCH_TOKEN` repository secret; without it the release still succeeds and the apt repository picks the package up on its daily run.
 
 ## Install from a checkout
 
