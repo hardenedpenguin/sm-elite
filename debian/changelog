@@ -1,3 +1,13 @@
+sm-elite (0.2.9) unstable; urgency=medium
+
+  * Fix a blank dashboard when the favorites file is missing: the live node
+    feed starts first, and the Favorites panel explains the problem.
+  * Favorites from Supermon are copied into /etc/sm-elite at install, so
+    removing supermon-ng no longer takes them away.
+  * Upgrades repair a config whose favorites folder no longer exists.
+
+ -- Jory A. Pratt <geekypenguin@gmail.com>  Mon, 09 Nov 2026 07:45:00 -0600
+
 sm-elite (0.2.8) unstable; urgency=medium
 
   * Control bar buttons use the same filled style as the rest of the page;

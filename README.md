@@ -79,7 +79,7 @@ The package:
 1. pulls in `python3-aiohttp`, `apache2`, and `sudo`
 2. creates the `smelite` system account the dashboard runs as
 3. reads the node numbers and callsign from `/etc/asterisk/rpt.conf` and the AMI login from `/etc/asterisk/manager.conf`, and writes `/etc/sm-elite/smelite.ini` and `nodes.ini` (readable only by root and the `smelite` group; the AMI password is never printed)
-4. picks up an existing Supermon `favorites.ini` when it finds one
+4. copies an existing Supermon `favorites.ini` into `/etc/sm-elite` when it finds one, so removing Supermon later leaves your favorites in place
 5. starts the `sm-elite` service on `127.0.0.1:8420` and publishes it through Apache at `/sm-elite/` on ports 80 and 443
 6. turns on the admin tools through `/usr/lib/sm-elite/smelite-admin` and its sudoers rule (set `[admin] enabled = no` to turn them off)
 

@@ -8,6 +8,7 @@ const state = {
   heardEnabled: false,
   favorites: [],
   favFile: "favorites.ini",
+  favError: "",
   selected: [],
   target: "",
   local: "",
@@ -558,7 +559,13 @@ function renderFavorites() {
   const scan = document.createElement("p");
   scan.id = "scan-line";
   scan.className = "muted";
-  scan.textContent = "Activity scan uses the AllStar stats service. Nodes are not connected just to see if they are busy.";
+  if (state.favError === "favorites file was not found") {
+    scan.textContent = operator() ? `No ${state.favFile} yet. Add a node above to start one.` : `No ${state.favFile} on this node yet.`;
+  } else if (state.favError) {
+    scan.textContent = `Favorites could not be loaded: ${state.favError}`;
+  } else {
+    scan.textContent = "Activity scan uses the AllStar stats service. Nodes are not connected just to see if they are busy.";
+  }
   host.append(scan);
   const table = document.createElement("table");
   const thead = document.createElement("thead");
@@ -1220,11 +1227,17 @@ function wireDisplay() {
 
 async function loadFavorites(file) {
   state.favFile = file;
-  await api("/api/favorites/watch", { method: "POST", body: { file } });
-  const data = await api(`/api/favorites?file=${encodeURIComponent(file)}`);
-  state.favorites = data.items || [];
-  for (const [node, stat] of Object.entries(data.stats || {})) {
-    if (stat) state.stats.set(node, stat);
+  try {
+    await api("/api/favorites/watch", { method: "POST", body: { file } });
+    const data = await api(`/api/favorites?file=${encodeURIComponent(file)}`);
+    state.favorites = data.items || [];
+    state.favError = "";
+    for (const [node, stat] of Object.entries(data.stats || {})) {
+      if (stat) state.stats.set(node, stat);
+    }
+  } catch (error) {
+    state.favorites = [];
+    state.favError = error.message;
   }
   renderFavorites();
 }
@@ -2227,9 +2240,9 @@ async function boot() {
   wireSystem();
   wireAlerts();
   if (state.boot.needs_setup) $("setup-dialog").showModal();
+  connectSocket();
   if (state.favFile) await loadFavorites(state.favFile);
   await loadHeard();
-  connectSocket();
   refreshHealth();
   setInterval(refreshHealth, 15000);
   setInterval(() => {

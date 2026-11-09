@@ -74,6 +74,39 @@ class SetupConfigTests(unittest.TestCase):
         self.assertEqual(ini["admin"]["enabled"], "yes")
         self.assertEqual(ini["database"]["file"], "/var/lib/sm-elite/astdb.txt")
 
+    def test_favorites_are_copied_and_kept(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            supermon, conf, examples = root / "supermon", root / "conf", root / "examples"
+            for folder in (supermon, conf, examples):
+                folder.mkdir()
+            (supermon / "favorites.ini").write_text("[general]\nlabel[] = Mine\ncmd[] = rpt cmd %node% ilink 3 2000\n")
+            (supermon / "favorites-net.ini").write_text("[general]\n")
+            (examples / "favorites.ini").write_text("[general]\n; example\n")
+            self.assertIsNone(setup_config.supermon_favorites((root / "nowhere",)))
+            source = setup_config.supermon_favorites((root / "nowhere", supermon))
+            self.assertEqual(source, supermon)
+            copied = setup_config.seed_favorites(conf, source, examples)
+            self.assertEqual(sorted(path.name for path in copied), ["favorites-net.ini", "favorites.ini"])
+            self.assertIn("Mine", (conf / "favorites.ini").read_text())
+            (conf / "favorites.ini").write_text("[general]\n; edited\n")
+            self.assertEqual(setup_config.seed_favorites(conf, source, examples), [])
+            self.assertIn("edited", (conf / "favorites.ini").read_text())
+
+    def test_missing_favorites_folder_is_repointed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            conf = Path(tmp)
+            text = "[server]\nport = 8420\n\n[favorites]\n; Supermon files\ndirectory = /gone/supermon-ng/user_files\n\n[commands]\ndirectory = /keep\n"
+            self.assertEqual(setup_config.missing_favorites_dir(text, conf), Path("/gone/supermon-ng/user_files"))
+            fixed = setup_config.repoint_favorites(text, conf)
+            self.assertIsNone(setup_config.missing_favorites_dir(fixed, conf))
+            ini = configparser.ConfigParser(interpolation=None)
+            ini.read_string(fixed)
+            self.assertEqual(ini["favorites"]["directory"], str(conf))
+            self.assertEqual(ini["commands"]["directory"], "/keep")
+            self.assertIn("; Supermon files", fixed)
+            self.assertIsNone(setup_config.missing_favorites_dir("[favorites]\ndirectory = .\n", conf))
+
 
 SUPERMON_YAML = """
 credentials:

@@ -416,9 +416,15 @@ async def favorites_add(request: web.Request) -> web.Response:
     engine: Engine = request.app["engine"]
     body = await _json(request)
     name = str(body.get("file") or engine.favorite_file)
-    items = load_file(engine.settings.favorites_dir, name)
+    try:
+        items = load_file(engine.settings.favorites_dir, name)
+    except FileNotFoundError:
+        items = []
     items = add_favorite(items, str(body.get("node") or "").strip(), str(body.get("label") or ""))
-    save_file(engine.settings.favorites_dir, name, items)
+    try:
+        save_file(engine.settings.favorites_dir, name, items)
+    except OSError as exc:
+        return web.json_response({"error": f"could not save {name}: {exc.strerror or exc}"}, status=500)
     return web.json_response({"ok": True})
 
 
@@ -428,7 +434,11 @@ async def favorites_delete(request: web.Request) -> web.Response:
     engine: Engine = request.app["engine"]
     body = await _json(request)
     name = str(body.get("file") or engine.favorite_file)
-    items = remove_favorite(load_file(engine.settings.favorites_dir, name), str(body.get("node") or "").strip())
+    try:
+        items = load_file(engine.settings.favorites_dir, name)
+    except FileNotFoundError:
+        return web.json_response({"error": "favorites file was not found"}, status=404)
+    items = remove_favorite(items, str(body.get("node") or "").strip())
     save_file(engine.settings.favorites_dir, name, items)
     return web.json_response({"ok": True})
 
@@ -440,7 +450,10 @@ async def favorites_watch(request: web.Request) -> web.Response:
     body = await _json(request)
     name = str(body.get("file") or "favorites.ini")
     # Validate the name before the scanner follows it.
-    load_file(engine.settings.favorites_dir, name)
+    try:
+        load_file(engine.settings.favorites_dir, name)
+    except FileNotFoundError:
+        return web.json_response({"error": "favorites file was not found"}, status=404)
     engine.favorite_file = name
     return web.json_response({"ok": True, "file": name})
 

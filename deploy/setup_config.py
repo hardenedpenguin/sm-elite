@@ -23,6 +23,7 @@ SERVICE_CANDIDATES = (
     "asterisk", "sm-elite", "apache2", "supermon-ng-backend", "allmon3", "skywarnplus-ng", "cron", "ssh",
 )
 SUPERMON_DVSWITCH = Path("/etc/supermon-ng/user_files/dvswitch_config.yml")
+SUPERMON_FAVORITES = (Path("/etc/supermon-ng/user_files"), Path("/var/www/html/supermon"), Path("/var/www/html/supermon-ng"))
 DVSWITCH_IMPORTED = "; Written by SM-Elite setup from supermon-ng"
 DVSWITCH_MODES = ("DMR", "YSF", "P25", "NXDN", "DSTAR", "ASL", "STFU")
 DEFAULT_DVSWITCH_INI = Path("/opt/MMDVM_Bridge/DVSwitch.ini")
@@ -169,11 +170,49 @@ def active_services() -> list[str]:
     return found
 
 
-def favorites_dir(config_dir: Path) -> Path:
-    for candidate in (Path("/etc/supermon-ng/user_files"), Path("/var/www/html/supermon"), Path("/var/www/html/supermon-ng")):
+def supermon_favorites(candidates: tuple[Path, ...] = SUPERMON_FAVORITES) -> Path | None:
+    for candidate in candidates:
         if (candidate / "favorites.ini").is_file():
             return candidate
-    return config_dir
+    return None
+
+
+def seed_favorites(conf: Path, source: Path | None, examples: Path) -> list[Path]:
+    """Copy favorites into SM-Elite's own folder so removing Supermon cannot take them away."""
+    copied = []
+    if source is not None:
+        for path in sorted(source.glob("favorites*.ini")):
+            target = conf / path.name
+            if path.is_file() and not target.exists():
+                shutil.copy(path, target)
+                copied.append(target)
+    target = conf / "favorites.ini"
+    if not target.exists():
+        shutil.copy(examples / "favorites.ini", target)
+        copied.append(target)
+    return copied
+
+
+def missing_favorites_dir(ini_text: str, conf: Path) -> Path | None:
+    parser = configparser.ConfigParser(interpolation=None)
+    parser.read_string(ini_text)
+    raw = parser.get("favorites", "directory", fallback="").strip()
+    if not raw:
+        return None
+    path = Path(raw) if Path(raw).is_absolute() else conf / raw
+    return None if path.is_dir() else path
+
+
+def repoint_favorites(ini_text: str, conf: Path) -> str:
+    lines, section = [], ""
+    for line in ini_text.splitlines(keepends=True):
+        stripped = line.strip()
+        if stripped.startswith("["):
+            section = stripped.strip("[]").strip().lower()
+        elif section == "favorites" and re.match(r"directory\s*=", stripped):
+            line = f"directory = {conf}\n"
+        lines.append(line)
+    return "".join(lines)
 
 
 def analog_bridge_inis() -> list[Path]:
@@ -407,15 +446,14 @@ def main(argv: list[str]) -> int:
 
     ini_path = conf / "smelite.ini"
     if args.force or not ini_path.exists():
-        fav = favorites_dir(conf)
-        if fav == conf and not (conf / "favorites.ini").exists():
-            shutil.copy(args.examples / "favorites.ini", conf / "favorites.ini")
-            os.chown(conf / "favorites.ini", entry.pw_uid, entry.pw_gid)
+        source = supermon_favorites()
+        for path in seed_favorites(conf, source, args.examples):
+            os.chown(path, entry.pw_uid, entry.pw_gid)
         text = smelite_ini(
             listen=[part.strip() for part in args.listen.split(",") if part.strip()],
             port=args.port,
             data_dir=data,
-            favorites_dir=fav,
+            favorites_dir=conf,
             callsign=args.callsign or (detect_callsign(args.rpt_conf.read_text(errors="replace")) if args.rpt_conf.is_file() else ""),
             location=args.location,
             admin=args.admin,
@@ -423,9 +461,17 @@ def main(argv: list[str]) -> int:
             helper=args.helper,
         )
         write_private(ini_path, text, args.user, 0o640)
-        print(f"smelite.ini: written (favorites from {fav})")
+        print(f"smelite.ini: written (favorites copied from {source or 'the example'} into {conf})")
     else:
-        print(f"smelite.ini: kept existing {ini_path}")
+        text = ini_path.read_text(encoding="utf-8", errors="replace")
+        gone = missing_favorites_dir(text, conf)
+        if gone is not None:
+            for path in seed_favorites(conf, supermon_favorites(), args.examples):
+                os.chown(path, entry.pw_uid, entry.pw_gid)
+            write_private(ini_path, repoint_favorites(text, conf), args.user, 0o640)
+            print(f"smelite.ini: favorites folder {gone} no longer exists; now using {conf}")
+        else:
+            print(f"smelite.ini: kept existing {ini_path}")
     return 0
 
 
