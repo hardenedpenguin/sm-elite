@@ -15,12 +15,15 @@ Depends: ${misc:Depends},
          python3 (>= 3.11),
          python3-aiohttp,
          python3-yaml,
+         python3-requests,
          adduser,
          sudo,
          apache2 (>= 2.4.47)
 Recommends: asl3-asterisk
 Suggests: asl3-tts,
-          sox
+          sox,
+          saytime-weather-rb,
+          skywarnplus-ng
 Description: AllStar node dashboard
  SM-Elite is a web dashboard for AllStarLink 3 nodes. One service holds the
  Asterisk manager connection and pushes live node status to every browser

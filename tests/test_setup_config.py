@@ -93,6 +93,38 @@ class SetupConfigTests(unittest.TestCase):
             self.assertEqual(setup_config.seed_favorites(conf, source, examples), [])
             self.assertIn("edited", (conf / "favorites.ini").read_text())
 
+    def test_node_info_is_written_once(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            conf = root / "conf"
+            conf.mkdir()
+            marker = root / "skywarnplus-ng.list"
+            missing = root / "no-supermon.ini"
+            self.assertIsNone(setup_config.seed_node_info(conf, [], missing, marker))
+            self.assertEqual(setup_config.seed_node_info(conf, ["546050", "546051"], missing, marker), "written for 546050, 546051")
+            ini = configparser.ConfigParser(interpolation=None)
+            ini.read(conf / "node_info.ini")
+            self.assertEqual(ini["general"]["NODE"], "546050 546051")
+            self.assertEqual(ini["skywarnplus"]["MASTER_ENABLE"], "no")
+            self.assertIsNone(setup_config.seed_node_info(conf, ["1"], missing, marker))
+
+            (conf / "node_info.ini").unlink()
+            supermon = root / "node_info.ini"
+            supermon.write_text("[general]\nNODE = 546055\nWX_CODE = 77511\n")
+            self.assertEqual(setup_config.seed_node_info(conf, ["546050"], supermon, marker), f"copied from {supermon}")
+            self.assertIn("77511", (conf / "node_info.ini").read_text())
+
+            marker.write_text("")
+            self.assertIn("MASTER_ENABLE = yes", setup_config.node_info_ini(["1"], marker.exists()))
+
+    def test_status_updater_uses_smelite_paths(self):
+        script = SETUP.parent / "ast_node_status_update.py"
+        source = script.read_text()
+        compile(source, str(script), "exec")
+        self.assertIn('"/etc/sm-elite/node_info.ini"', source)
+        self.assertNotIn("/var/log/supermon-ng", source)
+        self.assertNotIn("SUPERMON_NODE_INFO", source)
+
     def test_missing_favorites_folder_is_repointed(self):
         with tempfile.TemporaryDirectory() as tmp:
             conf = Path(tmp)

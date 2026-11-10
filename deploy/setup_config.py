@@ -24,6 +24,8 @@ SERVICE_CANDIDATES = (
 )
 SUPERMON_DVSWITCH = Path("/etc/supermon-ng/user_files/dvswitch_config.yml")
 SUPERMON_FAVORITES = (Path("/etc/supermon-ng/user_files"), Path("/var/www/html/supermon"), Path("/var/www/html/supermon-ng"))
+SUPERMON_NODE_INFO = Path("/etc/supermon-ng/user_files/node_info.ini")
+SKYWARN_INSTALLED = Path("/var/lib/dpkg/info/skywarnplus-ng.list")
 DVSWITCH_IMPORTED = "; Written by SM-Elite setup from supermon-ng"
 DVSWITCH_MODES = ("DMR", "YSF", "P25", "NXDN", "DSTAR", "ASL", "STFU")
 DEFAULT_DVSWITCH_INI = Path("/opt/MMDVM_Bridge/DVSwitch.ini")
@@ -97,6 +99,51 @@ def nodes_ini(nodes: list[str], ami: dict) -> str:
             "",
         ]
     return "\n".join(out)
+
+
+def node_info_ini(nodes: list[str], alerts: bool) -> str:
+    return f"""; Node status block settings. sm-elite-node-status.timer reads this every few
+; minutes and publishes uptime, load, CPU temperature, weather, disk, and
+; weather alerts for each NODE.
+;
+; Weather needs saytime-weather-rb (/usr/sbin/weather.rb): set WX_CODE to a ZIP
+; or airport code and WX_LOCATION to the name to show, or set WX_USE_GPS = yes.
+; Alerts come from SkywarnPlus-NG or CANWarn-NG on this node.
+
+[general]
+NODE = {" ".join(nodes)}
+WX_USE_GPS = no
+WX_CODE = 00000
+WX_LOCATION = City, State
+TEMP_UNIT = F
+ALERT_PROVIDER = skywarnplus
+
+[skywarnplus]
+MASTER_ENABLE = {"yes" if alerts else "no"}
+API_URL = http://127.0.0.1:8100
+
+[canwarn_ng]
+MASTER_ENABLE = no
+API_URL = http://127.0.0.1:8110
+"""
+
+
+def seed_node_info(conf: Path, nodes: list[str], source: Path = SUPERMON_NODE_INFO,
+                   skywarn_marker: Path = SKYWARN_INSTALLED) -> str | None:
+    """Write node_info.ini once: Supermon's copy when there is one, else built from rpt.conf."""
+    target = conf / "node_info.ini"
+    if target.exists():
+        return None
+    if source.is_file():
+        shutil.copy(source, target)
+        found = f"copied from {source}"
+    elif nodes:
+        target.write_text(node_info_ini(nodes, skywarn_marker.exists()), encoding="utf-8")
+        found = f"written for {', '.join(nodes)}"
+    else:
+        return None
+    os.chmod(target, 0o644)
+    return found
 
 
 def smelite_ini(*, listen: list[str], port: int, data_dir: Path, favorites_dir: Path, callsign: str,
@@ -443,6 +490,11 @@ def main(argv: list[str]) -> int:
             print(f"nodes.ini: {', '.join(nodes)} via AMI user '{ami['user']}' on port {ami['port']}")
     else:
         print(f"nodes.ini: kept existing {nodes_path}")
+
+    rpt_nodes = detect_nodes(args.rpt_conf.read_text(errors="replace")) if args.rpt_conf.is_file() else []
+    status = seed_node_info(conf, rpt_nodes)
+    if status is not None:
+        print(f"node_info.ini: {status}")
 
     ini_path = conf / "smelite.ini"
     if args.force or not ini_path.exists():

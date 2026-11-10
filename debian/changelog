@@ -1,3 +1,15 @@
+sm-elite (0.2.10) unstable; urgency=medium
+
+  * Ship supermon-ng's node status updater as
+    /usr/lib/sm-elite/ast_node_status_update.py with sm-elite-node-status.timer
+    (every 4 minutes), so the node status block keeps working without
+    supermon-ng. It stands aside while supermon-ng's own timer is enabled.
+  * Install writes /etc/sm-elite/node_info.ini, copied from supermon-ng when
+    present or built from rpt.conf.
+  * Depend on python3-requests; suggest saytime-weather-rb and skywarnplus-ng.
+
+ -- Jory A. Pratt <geekypenguin@gmail.com>  Mon, 09 Nov 2026 18:45:00 -0600
+
 sm-elite (0.2.9) unstable; urgency=medium
 
   * Fix a blank dashboard when the favorites file is missing: the live node

@@ -9,7 +9,7 @@ if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
 fi
 
 if [ "$1" = "purge" ]; then
-    rm -rf /etc/sm-elite /var/lib/sm-elite
+    rm -rf /etc/sm-elite /var/lib/sm-elite /var/log/sm-elite /var/cache/sm-elite
 fi
 
 #DEBHELPER#

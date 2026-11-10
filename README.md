@@ -21,7 +21,7 @@ One AllStar dashboard that keeps the part of each existing monitor that is actua
 | AllScan | Favorites use the Supermon `label[]` / `cmd[]` file. Activity (transmit percent, Rx%, link count) comes from the AllStar stats service, paced once on the server, without connecting to those nodes. |
 | supermon-ng | Connect, monitor, local monitor, disconnect, permanent links, DTMF, and command templates on one bar. The node status block (CPU, weather, SkywarnPlus alerts, disk) is shown as the node reports it. One websocket carries every node. |
 
-Everything is original code. The pieces that age badly stay out: per-button PHP permission files, HTML built inside the poller, a websocket port per node, one AMI session per browser, and shell commands as the control path.
+Everything is original code, apart from the node status updater, which comes from supermon-ng (see [Node status block](#node-status-block)). The pieces that age badly stay out: per-button PHP permission files, HTML built inside the poller, a websocket port per node, one AMI session per browser, and shell commands as the control path.
 
 <p align="center">
   <a href="images/sm-elite-main.png" title="Click to enlarge">
@@ -82,6 +82,7 @@ The package:
 4. copies an existing Supermon `favorites.ini` into `/etc/sm-elite` when it finds one, so removing Supermon later leaves your favorites in place
 5. starts the `sm-elite` service on `127.0.0.1:8420` and publishes it through Apache at `/sm-elite/` on ports 80 and 443
 6. turns on the admin tools through `/usr/lib/sm-elite/smelite-admin` and its sudoers rule (set `[admin] enabled = no` to turn them off)
+7. writes `/etc/sm-elite/node_info.ini` (copied from supermon-ng when it is there) and starts `sm-elite-node-status.timer`, which fills in the [node status block](#node-status-block)
 
 **Updating**: `sudo apt update && sudo apt upgrade`, or install the newer release file the same way. Your config, users, and history are kept and the service restarts on the new version.
 
@@ -160,6 +161,35 @@ For example:
 - Edit it as root (`sudo nano /etc/sm-elite/asdb.txt`). SM-Elite reads it again on the next directory refresh (every 15 minutes, `refresh_minutes` in `[database]`), or right away after `sudo systemctl restart sm-elite`.
 - Coming from Supermon or supermon-ng: `privatenodes.txt` uses the same format, so its lines can be copied in as they are.
 
+## Node status block
+
+The lines under each node card's title (weather, SkywarnPlus-NG alerts, CPU temperature, uptime, load, and disk) are app_rpt variables the node publishes. The package keeps them current with `sm-elite-node-status.timer`, which runs `/usr/lib/sm-elite/ast_node_status_update.py` one minute after boot and every 4 minutes after that. The updater comes from supermon-ng.
+
+Its settings are in `/etc/sm-elite/node_info.ini`:
+
+```ini
+[general]
+NODE = 546050 546051
+WX_USE_GPS = no
+WX_CODE = 77511
+WX_LOCATION = Alvin, Texas
+TEMP_UNIT = F
+ALERT_PROVIDER = skywarnplus
+
+[skywarnplus]
+MASTER_ENABLE = yes
+API_URL = http://127.0.0.1:8100
+```
+
+- `NODE` lists the nodes to update. A fresh install fills it in from `rpt.conf`.
+- Weather needs [saytime_weather_rb](https://github.com/hardenedpenguin/saytime_weather_rb) (`sudo apt install saytime-weather-rb`). Set `WX_CODE` to a ZIP or airport code and `WX_LOCATION` to the name to show, or set `WX_USE_GPS = yes`. With the placeholder `00000` the weather line stays empty.
+- Alerts come from [SkywarnPlus-NG](https://github.com/hardenedpenguin/SkywarnPlus-NG), or CANWarn-NG with `ALERT_PROVIDER = canwarn` and its `[canwarn_ng]` section. The install turns SkywarnPlus-NG alerts on when that package is installed.
+- `TEMP_UNIT` is `F` or `C`.
+
+Changes apply on the next run. To run it now: `sudo systemctl start sm-elite-node-status`. Its output is in `journalctl -u sm-elite-node-status`.
+
+While supermon-ng is installed with its own status timer on, SM-Elite's updater skips each run and leaves the job to supermon-ng. After supermon-ng is removed, SM-Elite's copy of its `node_info.ini` takes over.
+
 ## DVSwitch
 
 For a node with a DVSwitch bridge (Analog_Bridge and MMDVM_Bridge), edit `/etc/sm-elite/dvswitch.ini` (the package puts a commented copy there):
@@ -204,7 +234,7 @@ Every change made from the Admin page asks for the admin's password again.
 - `web/` the dashboard (plain HTML, CSS, and JavaScript, with no build step)
 - `config/` demo config and examples
 - `debian/` Debian packaging
-- `deploy/` package build script, config generator, Apache snippet, root helper
+- `deploy/` package build script, config generator, Apache snippet, root helper, node status updater
 - `data/` SQLite users, sessions, last heard, and the node directory cache for the demo
 - `images/` screenshots for this README
 

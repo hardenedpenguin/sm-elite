@@ -1,0 +1,14 @@
+[Unit]
+Description=SM-Elite node status update (uptime, weather, alerts)
+After=network-online.target asterisk.service
+Wants=network-online.target
+ConditionPathExists=/etc/sm-elite/node_info.ini
+
+[Service]
+Type=oneshot
+# supermon-ng publishes the same variables; let it keep doing so while its timer is on.
+ExecCondition=/bin/sh -c '! systemctl --quiet is-enabled supermon-ng-node-status.timer 2>/dev/null'
+ExecStart=/usr/bin/python3 /usr/lib/sm-elite/ast_node_status_update.py
+Environment=PYTHONDONTWRITEBYTECODE=1
+LogsDirectory=sm-elite
+CacheDirectory=sm-elite

@@ -13,6 +13,10 @@ endif
 override_dh_install:
 	dh_install -X__pycache__ -X.pyc
 
+override_dh_installsystemd:
+	dh_installsystemd
+	dh_installsystemd --name=sm-elite-node-status
+
 execute_after_dh_install:
 	install -D -m 0644 deploy/apache-sm-elite.conf $(PKG)/etc/apache2/conf-available/sm-elite.conf
 	sed -i 's/@PORT@/8420/g' $(PKG)/etc/apache2/conf-available/sm-elite.conf
@@ -20,4 +24,4 @@ execute_after_dh_install:
 
 execute_after_dh_fixperms:
 	chmod 0440 $(PKG)/etc/sudoers.d/sm-elite
-	chmod 0755 $(PKG)/usr/lib/sm-elite/smelite-admin
+	chmod 0755 $(PKG)/usr/lib/sm-elite/smelite-admin $(PKG)/usr/lib/sm-elite/ast_node_status_update.py
