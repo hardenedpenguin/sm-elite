@@ -6,10 +6,11 @@ read it. Passwords and file contents are never stored.
 
 from __future__ import annotations
 
-import sqlite3
 import time
 from pathlib import Path
 from typing import Any
+
+from .store import SQLiteStore
 
 MAX_FIELD = 200
 
@@ -19,13 +20,15 @@ def _clip(value: Any, limit: int = MAX_FIELD) -> str:
     return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
-class ActionLog:
+class ActionLog(SQLiteStore):
+    tables = ("actions",)
+
     def __init__(self, path: Path, keep_days: int = 90):
         self.keep_days = keep_days
         self._pruned_at = 0.0
-        path.parent.mkdir(parents=True, exist_ok=True)
-        self._db = sqlite3.connect(path, check_same_thread=False)
-        self._db.row_factory = sqlite3.Row
+        super().__init__(path)
+
+    def _init(self) -> None:
         self._db.executescript(
             """
             CREATE TABLE IF NOT EXISTS actions (
@@ -42,9 +45,6 @@ class ActionLog:
             """
         )
         self._db.commit()
-
-    def close(self) -> None:
-        self._db.close()
 
     def add(
         self,

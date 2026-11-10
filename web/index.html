@@ -29,6 +29,7 @@
       <button id="alerts-btn" type="button">Alerts</button>
       <button id="system-btn" type="button" hidden>System</button>
       <button id="admin-btn" type="button" hidden>Admin</button>
+      <button id="account-btn" type="button" hidden>Account</button>
       <button id="login-btn" type="button">Log in</button>
     </div>
   </header>
@@ -96,9 +97,9 @@
     <form id="users-form">
       <h2>Users</h2>
       <div id="user-list"></div>
-      <h3>Add a user</h3>
+      <h3 id="users-form-title">Add a user</h3>
       <label>Username <input name="username" required></label>
-      <label>Password <input name="password" type="password" minlength="8" required></label>
+      <label>Password <input name="password" type="password" minlength="8" autocomplete="new-password" required></label>
       <label>Role
         <select name="role">
           <option value="operator">Operator</option>
@@ -110,7 +111,24 @@
       <p id="users-error" class="form-error"></p>
       <div class="dialog-actions">
         <button type="button" id="users-close" class="ghost">Close</button>
-        <button type="submit">Add user</button>
+        <button type="button" id="users-cancel-edit" class="ghost" hidden>Cancel edit</button>
+        <button type="submit" id="users-submit">Add user</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="account-dialog">
+    <form id="account-form">
+      <h2 id="account-title">Account</h2>
+      <h3>Change your password</h3>
+      <label>Current password <input name="current" type="password" autocomplete="current-password" required></label>
+      <label>New password <input name="password" type="password" minlength="8" autocomplete="new-password" required></label>
+      <label>New password again <input name="again" type="password" minlength="8" autocomplete="new-password" required></label>
+      <p class="hint">At least 8 characters. Other browsers logged in as you are logged out; this one stays logged in.</p>
+      <p id="account-error" class="form-error"></p>
+      <div class="dialog-actions">
+        <button type="button" id="account-close" class="ghost">Close</button>
+        <button type="submit">Change password</button>
       </div>
     </form>
   </dialog>
@@ -182,7 +200,7 @@
     <p id="schedule-clock" class="hint"></p>
     <div id="schedule-list"></div>
     <form id="schedule-form">
-      <h3>Add a scheduled action</h3>
+      <h3 id="schedule-form-title">Add a scheduled action</h3>
       <div class="schedule-fields">
         <label>Node <select name="node"></select></label>
         <label>Action <select name="kind"></select></label>
@@ -192,8 +210,10 @@
         <label>Time <input name="at" type="time" required></label>
       </div>
       <fieldset class="scope">
-        <legend>Days</legend>
+        <legend>When</legend>
+        <label class="check"><input type="radio" name="repeat" value="weekly" checked> Every week on</label>
         <div id="schedule-days" class="schedule-days"></div>
+        <label class="check"><input type="radio" name="repeat" value="once"> Once on <input name="date" type="date" aria-label="Date"></label>
       </fieldset>
       <label class="check" data-when="permanent"><input type="checkbox" name="permanent"> Permanent link</label>
       <fieldset class="scope" data-when="scope">
@@ -204,10 +224,11 @@
       <label>Note <input name="note" maxlength="80" placeholder="optional, for example Tuesday night net"></label>
       <p id="schedule-error" class="form-error"></p>
       <div class="dialog-actions">
-        <button type="submit">Add</button>
+        <button type="button" id="schedule-cancel-edit" class="ghost" hidden>Cancel edit</button>
+        <button type="submit" id="schedule-submit">Add</button>
       </div>
     </form>
-    <p class="hint">A scheduled action runs with the permissions of the user who added it. Removing that user, or taking away their access to the node, stops it.</p>
+    <p class="hint">A scheduled action runs with the permissions of the user who added or last edited it. Removing that user, or taking away their access to the node, stops it. A one-time action turns itself off after it runs.</p>
     <p id="schedule-status" class="hint"></p>
     <div class="dialog-actions">
       <button type="button" id="schedule-close" class="ghost">Close</button>
@@ -319,6 +340,7 @@
       <button type="button" data-tab="system" class="on">Node &amp; server</button>
       <button type="button" data-tab="files">Config files</button>
       <button type="button" data-tab="log">Asterisk log</button>
+      <button type="button" data-tab="backup">Backup</button>
     </nav>
     <label class="admin-pass">Your password (needed for anything that changes the node)
       <input id="admin-password" type="password" autocomplete="current-password">
@@ -362,6 +384,20 @@
         <button type="button" id="admin-log-refresh" class="ghost">Refresh</button>
       </div>
       <pre id="admin-log" class="log"></pre>
+    </section>
+
+    <section data-panel="backup" hidden>
+      <h3>Download a backup</h3>
+      <p class="hint">One file with SM-Elite's config folder (nodes, favorites, DVSwitch, node names), the users and scheduled actions, and the last heard list and action log. It holds the AMI and hotspot passwords and the login password hashes, so keep it somewhere private.</p>
+      <button type="button" id="settings-download">Download backup</button>
+      <h3>Restore from a backup</h3>
+      <input id="settings-file" type="file" accept=".gz,.tgz,application/gzip" aria-label="Backup file">
+      <div id="settings-preview" hidden>
+        <p id="settings-summary"></p>
+        <div id="settings-parts" class="settings-parts"></div>
+        <p class="hint">Restoring config files restarts SM-Elite. Restoring users logs everyone out, you included. Every config file it replaces is copied to /var/backups/smelite first.</p>
+        <button type="button" id="settings-restore" class="danger">Restore</button>
+      </div>
     </section>
 
     <p id="admin-status" class="hint"></p>

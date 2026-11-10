@@ -104,6 +104,28 @@ class HelperWriteTests(unittest.TestCase):
             self.helper.write("rpt.conf", expected)
         return out.getvalue().strip()
 
+    def run_config_write(self, name: str, data: bytes):
+        stdin = mock.Mock(buffer=io.BytesIO(data))
+        group = mock.Mock(gr_gid=os.getegid())
+        user = mock.Mock(pw_uid=os.geteuid())
+        with mock.patch("sys.stdin", stdin), mock.patch("sys.stdout", io.StringIO()) as out, \
+                mock.patch.object(self.helper.grp, "getgrnam", return_value=group), \
+                mock.patch.object(self.helper.pwd, "getpwnam", return_value=user):
+            self.helper.config_write(name)
+        return out.getvalue().strip()
+
+    def test_config_write_only_takes_sm_elite_files(self):
+        self.helper.SMELITE_DIR = Path(self.tmp.name)
+        self.assertEqual(self.run_config_write("nodes.ini", b"[1998]\n"), "none (new file)")
+        self.assertEqual((Path(self.tmp.name) / "nodes.ini").stat().st_mode & 0o777, 0o640)
+        self.run_config_write("favorites-club.ini", b"[general]\n")
+        self.assertEqual((Path(self.tmp.name) / "favorites-club.ini").stat().st_mode & 0o777, 0o644)
+        backup = Path(self.run_config_write("nodes.ini", b"[1999]\n"))
+        self.assertEqual(backup.read_text(), "[1998]\n")
+        for bad in ("rpt.conf", "../nodes.ini", "nodes.ini.bak", "favorites/x.ini"):
+            with self.assertRaises(SystemExit, msg=bad), mock.patch("sys.stderr", io.StringIO()):
+                self.run_config_write(bad, b"x\n")
+
     def test_write_backs_up_and_keeps_mode(self):
         sha = hashlib.sha256(b"old\n").hexdigest()
         backup = Path(self.run_write(b"new\n", sha))

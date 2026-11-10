@@ -5,14 +5,17 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import shutil
+import socket
 import time
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse
 
-from aiohttp import WSCloseCode, WSMsgType, web
+from aiohttp import BodyPartReader, WSCloseCode, WSMsgType, web
 
+from . import __version__, backup
 from .admin import ASTERISK_ACTIONS, POWER_ACTIONS, AdminError
 from .ami import AmiError
 from .astdb import search_directory
@@ -59,7 +62,9 @@ def create_app(engine: Engine) -> web.Application:
     app.router.add_post("/api/logout", logout)
     app.router.add_get("/api/users", users_list)
     app.router.add_post("/api/users", users_create)
+    app.router.add_post("/api/users/{name}", users_update)
     app.router.add_delete("/api/users/{name}", users_delete)
+    app.router.add_post("/api/account/password", account_password)
     app.router.add_get("/api/actions", actions_list)
     app.router.add_get("/api/favorites", favorites_get)
     app.router.add_post("/api/favorites", favorites_add)
@@ -77,6 +82,9 @@ def create_app(engine: Engine) -> web.Application:
     app.router.add_get("/api/admin/backup", admin_backup_compare)
     app.router.add_post("/api/admin/restore", admin_restore)
     app.router.add_post("/api/admin/action", admin_action)
+    app.router.add_post("/api/admin/settings-backup", settings_backup)
+    app.router.add_post("/api/admin/settings-inspect", settings_inspect)
+    app.router.add_post("/api/admin/settings-restore", settings_restore)
     app.router.add_get("/api/sounds", sounds_get)
     app.router.add_post("/api/sounds/speak", sounds_speak)
     app.router.add_post("/api/sounds/play", sounds_play)
@@ -91,6 +99,7 @@ def create_app(engine: Engine) -> web.Application:
     app.router.add_get("/api/schedule", schedule_get)
     app.router.add_post("/api/schedule", schedule_add)
     app.router.add_post("/api/schedule/{id}", schedule_update)
+    app.router.add_put("/api/schedule/{id}", schedule_edit)
     app.router.add_delete("/api/schedule/{id}", schedule_delete)
     app.router.add_post("/api/schedule/{id}/run", schedule_run)
     app.router.add_get("/api/commands", commands_list)
@@ -417,13 +426,64 @@ async def users_create(request: web.Request) -> web.Response:
     if _require(request, "admin") is None:
         return web.json_response({"error": "admin required"}, status=401)
     body = await _json(request)
-    nodes = body.get("nodes")
-    if isinstance(nodes, str):
-        nodes = [part.strip() for part in nodes.split(",") if part.strip()]
+    nodes = _nodes_field(body)
     name = str(body.get("username") or "").strip()
     role = str(body.get("role") or "operator")
     request.app["engine"].auth.create_user(name, str(body.get("password") or ""), role, nodes or None)
     _log(request, "add user", target=name, detail=f"{role}, {'nodes ' + ', '.join(map(str, nodes)) if nodes else 'all nodes'}")
+    return web.json_response({"ok": True})
+
+
+def _nodes_field(body: dict) -> list[str] | None:
+    nodes = body.get("nodes")
+    if isinstance(nodes, str):
+        nodes = [part.strip() for part in nodes.split(",") if part.strip()]
+    if nodes is not None and not isinstance(nodes, list):
+        raise ValueError("node limit must be a list of node numbers")
+    return nodes or None
+
+
+async def users_update(request: web.Request) -> web.Response:
+    if _require(request, "admin") is None:
+        return web.json_response({"error": "admin required"}, status=401)
+    engine: Engine = request.app["engine"]
+    name = request.match_info["name"]
+    current = engine.auth.get_user(name)
+    if current is None:
+        return web.json_response({"error": "user was not found"}, status=404)
+    body = await _json(request)
+    role = str(body.get("role") or current.role)
+    nodes = _nodes_field(body)
+    admins = [item for item in engine.auth.list_users() if item["role"] == "admin"]
+    if current.role == "admin" and role != "admin" and len(admins) == 1:
+        return web.json_response({"error": "the last admin must stay an admin"}, status=400)
+    password = str(body.get("password") or "")
+    if password:
+        engine.auth.set_password(name, password, keep_token=request["token"] if name == request["user"].name else None)
+    engine.auth.update_user(name, role, nodes)
+    changes = [role, f"nodes {', '.join(map(str, nodes))}" if nodes else "all nodes"]
+    if password:
+        changes.append("password reset")
+    _log(request, "edit user", target=name, detail=", ".join(changes))
+    return web.json_response({"ok": True})
+
+
+async def account_password(request: web.Request) -> web.Response:
+    engine: Engine = request.app["engine"]
+    user = request["user"]
+    if user is None:
+        return web.json_response({"error": "login required"}, status=401)
+    peer = request.remote or "local"
+    now = time.time()
+    recent = [stamp for stamp in engine.login_failures.get(peer, []) if now - stamp < 300]
+    if len(recent) >= 8:
+        return web.json_response({"error": "too many attempts; wait a few minutes"}, status=429)
+    body = await _json(request)
+    if engine.auth.verify(user.name, str(body.get("current") or "")) is None:
+        engine.login_failures[peer] = recent + [now]
+        return web.json_response({"error": "your current password is not right"}, status=403)
+    engine.auth.set_password(user.name, str(body.get("password") or ""), keep_token=request["token"])
+    _log(request, "change password")
     return web.json_response({"ok": True})
 
 
@@ -886,6 +946,107 @@ async def admin_action(request: web.Request) -> web.Response:
     return web.json_response({"ok": True, "detail": detail})
 
 
+def _stores(engine: Engine) -> dict:
+    found = {
+        "smelite.db": engine.auth,
+        "schedule.db": engine.schedule,
+        "history.db": engine.history,
+        "actions.db": engine.actions,
+    }
+    return {name: store for name, store in found.items() if store is not None}
+
+
+async def settings_backup(request: web.Request) -> web.Response:
+    engine: Engine = request.app["engine"]
+    user = _admin(request)
+    body = await _json(request)
+    _confirm_password(request, user, body)
+    host = socket.gethostname()
+    blob = backup.create(engine.settings.config_dir, _stores(engine), __version__, host)
+    _log(request, "download settings backup", detail=f"{len(blob)} bytes")
+    name = f"sm-elite-settings-{re.sub(r'[^A-Za-z0-9.-]', '-', host)}-{time.strftime('%Y%m%d-%H%M')}.tar.gz"
+    return web.Response(
+        body=blob,
+        content_type="application/gzip",
+        headers={"Content-Disposition": f'attachment; filename="{name}"', "Cache-Control": "no-store"},
+    )
+
+
+async def _backup_upload(request: web.Request) -> tuple[dict, bytes]:
+    if not request.content_type.startswith("multipart/"):
+        raise ValueError("send the backup as a file upload")
+    reader = await request.multipart()
+    fields: dict[str, str] = {}
+    blob = None
+    while (part := await reader.next()) is not None:
+        if not isinstance(part, BodyPartReader):
+            continue
+        limit = backup.MAX_ARCHIVE_BYTES if part.name == "file" else 4096
+        chunks, size = [], 0
+        while chunk := await part.read_chunk(65536):
+            size += len(chunk)
+            if size > limit:
+                raise ValueError("that file is larger than any settings backup" if part.name == "file" else "form field is too long")
+            chunks.append(chunk)
+        if part.name == "file":
+            blob = b"".join(chunks)
+        elif part.name in ("password", "parts"):
+            fields[part.name] = b"".join(chunks).decode("utf-8", errors="replace")
+    if not blob:
+        raise ValueError("choose a backup file")
+    return fields, blob
+
+
+def _tables(engine: Engine) -> dict:
+    return {name: store.tables for name, store in _stores(engine).items()}
+
+
+async def settings_inspect(request: web.Request) -> web.Response:
+    engine: Engine = request.app["engine"]
+    _admin(request)
+    _fields, blob = await _backup_upload(request)
+    with backup.read(blob, _tables(engine)) as archive:
+        return web.json_response(archive.summary())
+
+
+async def settings_restore(request: web.Request) -> web.Response:
+    engine: Engine = request.app["engine"]
+    user = _admin(request)
+    fields, blob = await _backup_upload(request)
+    _confirm_password(request, user, fields)
+    wanted = {part for part in fields.get("parts", "").split(",") if part}
+    if not wanted:
+        raise ValueError("pick what to restore")
+    if wanted - set(backup.GROUPS):
+        raise ValueError("unknown part of a backup")
+    stores = _stores(engine)
+    restored = []
+    with backup.read(blob, _tables(engine)) as archive:
+        missing = [backup.GROUPS[group].lower() for group in sorted(wanted - set(archive.groups()))]
+        if missing:
+            raise ValueError(f"that backup has no {' or '.join(missing)}")
+        if "config" in wanted:
+            for name, data in sorted(archive.config.items()):
+                await engine.admin.write_config(name, data, user.name)
+            restored.append(f"{len(archive.config)} config files")
+        for name, path in archive.data.items():
+            if backup.DATABASES[name] in wanted and name in stores:
+                stores[name].restore_from(path)
+        if "accounts" in wanted:
+            restored.append(f"{archive.users} users and {archive.jobs} scheduled actions")
+        if "history" in wanted:
+            restored.append("last heard and the action log")
+        source = f"{archive.manifest.get('host') or 'unknown host'}, {archive.manifest.get('created') or 'unknown date'}"
+    _log(request, "restore settings backup", detail=f"from {source}: {', '.join(restored)}")
+    restart = await engine.admin.restart_dashboard(user.name) if "config" in wanted else ""
+    return web.json_response({
+        "ok": True,
+        "restored": restored,
+        "restart": restart,
+        "logged_out": "accounts" in wanted,
+    })
+
+
 def _schedule(engine: Engine):
     if engine.schedule is None:
         raise web.HTTPServiceUnavailable(text=json.dumps({"error": "scheduling is not available"}), content_type="application/json")
@@ -908,12 +1069,13 @@ async def schedule_get(request: web.Request) -> web.Response:
         "timezone": now.tzname() or "",
         "now": now.strftime("%H:%M"),
         "weekday": now.weekday(),
+        "today": now.strftime("%Y-%m-%d"),
     })
 
 
-async def schedule_add(request: web.Request) -> web.Response:
+async def _job_from_body(request: web.Request) -> Job:
+    """A validated job from the request, owned by the user saving it."""
     engine: Engine = request.app["engine"]
-    store = _schedule(engine)
     body = await _json(request)
     node = str(body.get("node") or "").strip()
     user = _access_node(request, node, "operator")
@@ -930,17 +1092,37 @@ async def schedule_add(request: web.Request) -> web.Response:
         scope=str(body.get("scope") or "local"),
         template=str(body.get("template") or ""),
         note=str(body.get("note") or ""),
+        date=str(body.get("date") or ""),
     )
-    validate(
+    return validate(
         job,
         nodes=engine.settings.monitored_ids(),
         commands={item.command for item in engine.settings.commands},
         sounds={entry["name"] for entry in engine.sounds.library()},
     )
+
+
+def _job_summary(job: Job) -> str:
+    return f"{job.as_dict()['days_label']} {job.at} {SCHEDULE_ACTIONS.get(job.action, job.action).lower()}"
+
+
+async def schedule_add(request: web.Request) -> web.Response:
+    store = _schedule(request.app["engine"])
+    job = await _job_from_body(request)
     store.add(job)
-    _log(request, "add schedule", node=node, target=job.target or job.sound or job.template,
-         detail=f"{job.as_dict()['days_label']} {job.at} {SCHEDULE_ACTIONS[job.action].lower()}")
+    _log(request, "add schedule", node=job.node, target=job.target or job.sound or job.template, detail=_job_summary(job))
     return web.json_response({"job": job.as_dict()})
+
+
+async def schedule_edit(request: web.Request) -> web.Response:
+    engine: Engine = request.app["engine"]
+    old = _schedule_job(request)
+    job = await _job_from_body(request)
+    job.id = old.id
+    engine.schedule.update(job)
+    _log(request, "edit schedule", node=job.node, target=f"#{job.id}",
+         detail=f"was {old.node} {_job_summary(old)}; now {_job_summary(job)}")
+    return web.json_response({"job": engine.schedule.get(job.id).as_dict()})
 
 
 def _schedule_job(request: web.Request):
@@ -974,7 +1156,7 @@ async def schedule_delete(request: web.Request) -> web.Response:
     job = _schedule_job(request)
     engine.schedule.delete(job.id)
     _log(request, "remove schedule", node=job.node, target=f"#{job.id}",
-         detail=f"{job.as_dict()['days_label']} {job.at} {SCHEDULE_ACTIONS.get(job.action, job.action).lower()}")
+         detail=_job_summary(job))
     return web.json_response({"ok": True})
 
 

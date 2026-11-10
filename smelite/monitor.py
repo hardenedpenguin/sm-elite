@@ -447,13 +447,20 @@ class Engine:
             if self.schedule is None or not minutes:
                 continue
             for moment in minutes:
-                for job in self.schedule.jobs():
-                    if not job.runs_at(moment):
-                        continue
-                    try:
-                        await self.run_scheduled(job)
-                    except Exception:
-                        log.exception("schedule: job %s failed", job.id)
+                await self.run_due(moment)
+
+    async def run_due(self, moment: datetime) -> None:
+        """Run every job set for this minute; a one-time job turns itself off."""
+        for job in self.schedule.jobs():
+            if not job.runs_at(moment):
+                continue
+            try:
+                await self.run_scheduled(job)
+            except Exception:
+                log.exception("schedule: job %s failed", job.id)
+            finally:
+                if job.date:
+                    self.schedule.set_enabled(job.id, False)
 
     async def run_scheduled(self, job: Job, *, by: str = "", peer: str = "schedule") -> str:
         """Run one job as its owner, store the result, and log it."""

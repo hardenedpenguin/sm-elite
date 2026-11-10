@@ -1,3 +1,19 @@
+sm-elite (0.2.12) unstable; urgency=medium
+
+  * Account: change your own password; other browsers logged in as you are
+    logged out.
+  * Users: admins edit a user's role, node limit, and password. The last
+    admin stays an admin.
+  * Schedule: edit existing actions, and run an action once on a date (it
+    pauses itself afterwards).
+  * Admin Backup tab: download one file with the config folder, users,
+    schedule, last heard, and action log, and restore any of those parts
+    from it. Config files go through the root helper with backups, then
+    SM-Elite restarts.
+  * New favicon and home screen icon.
+
+ -- Jory A. Pratt <geekypenguin@gmail.com>  Mon, 09 Nov 2026 19:50:00 -0600
+
 sm-elite (0.2.11) unstable; urgency=medium
 
   * List nodes with public nodes first, then private nodes (below 2000),

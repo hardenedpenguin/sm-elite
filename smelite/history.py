@@ -7,11 +7,12 @@ direct link their audio arrived on; AMI does not identify them further.
 
 from __future__ import annotations
 
-import sqlite3
 import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from .store import SQLiteStore
 
 LOCAL = "local"
 LOCAL_DESC = "Local radio"
@@ -97,12 +98,14 @@ class KeyTracker:
         return finished, changed
 
 
-class HistoryStore:
+class HistoryStore(SQLiteStore):
+    tables = ("heard",)
+
     def __init__(self, path: Path, keep_days: int = 30):
         self.keep_days = keep_days
-        path.parent.mkdir(parents=True, exist_ok=True)
-        self._db = sqlite3.connect(path, check_same_thread=False)
-        self._db.row_factory = sqlite3.Row
+        super().__init__(path)
+
+    def _init(self) -> None:
         self._db.executescript(
             """
             CREATE TABLE IF NOT EXISTS heard (
@@ -117,9 +120,6 @@ class HistoryStore:
             """
         )
         self._db.commit()
-
-    def close(self) -> None:
-        self._db.close()
 
     def add(self, keyup: Keyup) -> Keyup:
         if keyup.ended is None:

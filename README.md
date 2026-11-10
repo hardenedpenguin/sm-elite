@@ -45,10 +45,10 @@ Everything is original code, apart from the node status updater, which comes fro
 - **DVSwitch**: switch a bridged node between DMR, YSF, P25, NXDN, D-STAR, and the other DVSwitch modes, pick a talkgroup from your list or type one, and restart the bridge services.
 - **Keyup alerts**: a chime, an on-page notice, and (over HTTPS) a desktop notification when someone keys up on the nodes you pick.
 - **System**: OS, CPU, memory, disks, temperature, addresses, service status, AllStar packages, and the Asterisk database.
-- **Schedule**: connect, monitor, or disconnect a link, play a saved announcement, or run a command from `commands.ini` at a set time on chosen days of the week. Handy for linking to a net and dropping it afterwards.
-- **Admin**: reload or restart Asterisk, reboot or power off the server, edit `rpt.conf`, `iax.conf`, `extensions.conf`, and SM-Elite's own `asdb.txt` and `node_info.ini` with automatic backups, compare and restore backups, and read the Asterisk log.
+- **Schedule**: connect, monitor, or disconnect a link, play a saved announcement, or run a command from `commands.ini` at a set time on chosen days of the week, or once on a date. Handy for linking to a net and dropping it afterwards.
+- **Admin**: reload or restart Asterisk, reboot or power off the server, edit `rpt.conf`, `iax.conf`, `extensions.conf`, and SM-Elite's own `asdb.txt` and `node_info.ini` with automatic backups, compare and restore backups, read the Asterisk log, and download or restore a [settings backup](#settings-backup).
 - **Action log**: admins see who connected, disconnected, announced, scheduled, edited a file, or logged in, when, and from where.
-- **Users**: viewers watch, operators control nodes (optionally limited to certain node numbers), and admins also manage users and the admin tools.
+- **Users**: viewers watch, operators control nodes (optionally limited to certain node numbers), and admins also manage users and the admin tools. Everyone can change their own password under **Account**.
 
 ## Try it
 
@@ -220,36 +220,63 @@ A DVSwitch button then appears in the control bar for that node. SM-Elite talks 
 
 ## Schedule
 
-Operators open **Schedule** in the control bar to add an action that repeats every week: pick the node, the action (connect, monitor, local monitor, disconnect, disconnect all, play a saved sound, or a command from `commands.ini`), the time, and the days. A Tuesday net might be a permanent connect to the net's hub at 19:55 and a disconnect at 21:05.
+Operators open **Schedule** in the control bar to add an action: pick the node, the action (connect, monitor, local monitor, disconnect, disconnect all, play a saved sound, or a command from `commands.ini`), the time, and either the days of the week it repeats on or a single date. A Tuesday net might be a permanent connect to the net's hub at 19:55 and a disconnect at 21:05; a special event net can run once on its date.
 
 - Times use the node's own clock and time zone, shown at the top of the dialog.
-- Each action runs with the permissions of the user who added it at the moment it runs. Removing that user, or limiting them to other nodes, stops their scheduled actions; the last run column then says why it was skipped.
+- Each action runs with the permissions of the user who added or last edited it, at the moment it runs. Removing that user, or limiting them to other nodes, stops their scheduled actions; the last run column then says why it was skipped.
 - Operators see and manage the scheduled actions on the nodes they may control; admins see all of them.
+- Edit loads an action back into the form; saving it turns the action on again and keeps its last run.
 - Pause keeps an action without running it, and Run now runs it once straight away.
+- A one-time action pauses itself after it runs. Edit it to give it a new date.
 - An action whose time passes while SM-Elite is stopped is skipped; it runs again at its next time.
 - Every run is in the action log, with its result.
 
 ## Action log
 
-Admins find it under **System**, then **Action log**. It lists each control action (connect, disconnect, DTMF, commands), announcement, allow and deny list change, DVSwitch change, favorite added or removed, scheduled action added, run, paused, or removed, config file save or restore, Asterisk restart, reboot, user added or removed, and login. Each entry has the user, node, target, a short detail, and the address it came from. Passwords and file contents are never stored. A failed login with an unknown username is recorded without the name, since that is often a password typed into the wrong box.
+Admins find it under **System**, then **Action log**. It lists each control action (connect, disconnect, DTMF, commands), announcement, allow and deny list change, DVSwitch change, favorite added or removed, scheduled action added, edited, run, paused, or removed, config file save or restore, settings backup download or restore, Asterisk restart, reboot, user added, edited, or removed, password change, and login. Each entry has the user, node, target, a short detail, and the address it came from. Passwords and file contents are never stored. A failed login with an unknown username is recorded without the name, since that is often a password typed into the wrong box.
 
 Entries are kept for 90 days (`action_days` in `[history]`) in `/var/lib/sm-elite/actions.db`.
+
+## Accounts
+
+Anyone logged in can change their own password with **Account** in the header. It asks for the current password, and logs out every other browser signed in as that user.
+
+Admins open **Users** to add, edit, or remove accounts. Edit changes the role and the node limit, and can set a new password (leave it blank to keep the current one); a new password logs that user out everywhere. The last admin cannot be removed or turned into an operator or viewer.
+
+## Settings backup
+
+Admins find **Backup** on the Admin page. **Download backup** saves one `.tar.gz` holding:
+
+- SM-Elite's config folder: `smelite.ini`, `nodes.ini`, `commands.ini`, `dvswitch.ini`, `node_info.ini`, `asdb.txt`, and the `favorites*.ini` files
+- the users and scheduled actions (`smelite.db`, `schedule.db`), with login sessions left out
+- the last heard list and the action log (`history.db`, `actions.db`)
+
+The file holds the AMI and hotspot passwords and the login password hashes, so keep it somewhere private.
+
+To restore, choose a backup file. The page shows where and when it was made and what it holds, then you tick the parts to bring back:
+
+- **Config files** are written through the root helper, each replaced file first copied to `/var/backups/smelite`, and SM-Elite restarts a few seconds later to load them. Check `nodes.ini` and `smelite.ini` when moving to a different node.
+- **Users and scheduled actions** replace every account and schedule, and log everyone out, you included. Log back in with an account from the backup. A backup whose accounts include no admin is refused.
+- **Last heard and the action log** replace those lists.
+
+Restoring is recorded in the action log.
 
 ## Admin tools and root access
 
 The dashboard runs as an ordinary account. Anything that needs root goes through one small script, `/usr/lib/sm-elite/smelite-admin`, which that account may run with `sudo` and nothing else. The helper:
 
 - writes only `rpt.conf`, `iax.conf`, `extensions.conf`, `/etc/sm-elite/asdb.txt`, and `/etc/sm-elite/node_info.ini`, and only when the file still matches the version the editor loaded
+- writes SM-Elite's own config files in `/etc/sm-elite` when restoring a settings backup, keeping each file's owner and mode
 - keeps the last 20 versions of each file in `/var/backups/smelite` (mode 600)
 - saves and deletes announcements in the Asterisk sounds folder
-- restarts the DVSwitch bridge services and starts the node status updater, and no other services
+- restarts the DVSwitch bridge services and SM-Elite itself, and starts the node status updater, and no other services
 - schedules reboot and power off five seconds out, so the page can answer first
 
 Every change made from the Admin page asks for the admin's password again.
 
 ## Layout
 
-- `smelite/` the Python service: AMI, snapshots, stats cache, auth, history, admin, sounds, system info, DVSwitch
+- `smelite/` the Python service: AMI, snapshots, stats cache, auth, history, admin, sounds, system info, DVSwitch, schedule, action log, settings backup
 - `web/` the dashboard (plain HTML, CSS, and JavaScript, with no build step)
 - `config/` demo config and examples
 - `debian/` Debian packaging

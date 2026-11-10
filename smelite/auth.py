@@ -21,6 +21,8 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from .store import SQLiteStore
+
 USERNAME_RE = re.compile(r"^[A-Za-z0-9_.\-]{2,32}$")
 ROLES = ("viewer", "operator", "admin")
 SESSION_TTL = 12 * 60 * 60
@@ -42,6 +44,21 @@ class User:
         if self.nodes is None:
             return True
         return node in self.nodes
+
+
+def _check_password(password: str) -> None:
+    if len(password) < 8:
+        raise ValueError("password must be at least 8 characters")
+
+
+def _node_text(nodes: list[str] | None) -> str | None:
+    clean = []
+    for node in nodes or []:
+        node = str(node).strip()
+        if not re.fullmatch(r"\d{1,8}", node):
+            raise ValueError("restriction list has a bad node number")
+        clean.append(node)
+    return ",".join(clean) if clean else None
 
 
 def _hash_password(password: str, salt: bytes | None = None) -> str:
@@ -91,13 +108,8 @@ def _verify_password(password: str, stored: str) -> bool:
     return hmac.compare_digest(digest.hex(), digest_hex)
 
 
-class AuthStore:
-    def __init__(self, path: Path):
-        self.path = path
-        path.parent.mkdir(parents=True, exist_ok=True)
-        self._db = sqlite3.connect(path, check_same_thread=False)
-        self._db.row_factory = sqlite3.Row
-        self._init()
+class AuthStore(SQLiteStore):
+    tables = ("users", "sessions")
 
     def _init(self) -> None:
         self._db.executescript(
@@ -117,9 +129,6 @@ class AuthStore:
         )
         self._db.commit()
 
-    def close(self) -> None:
-        self._db.close()
-
     def user_count(self) -> int:
         row = self._db.execute("SELECT COUNT(*) AS n FROM users").fetchone()
         return int(row["n"])
@@ -129,24 +138,32 @@ class AuthStore:
             raise ValueError("username must be 2-32 letters, numbers, dot, dash, or underscore")
         if role not in ROLES:
             raise ValueError("unknown role")
-        if len(password) < 8:
-            raise ValueError("password must be at least 8 characters")
-        node_text = None
-        if nodes:
-            clean = []
-            for node in nodes:
-                node = str(node).strip()
-                if not re.fullmatch(r"\d{1,8}", node):
-                    raise ValueError("restriction list has a bad node number")
-                clean.append(node)
-            node_text = ",".join(clean) if clean else None
+        _check_password(password)
         try:
             self._db.execute(
                 "INSERT INTO users (name, password, role, nodes) VALUES (?, ?, ?, ?)",
-                (name, _hash_password(password), role, node_text),
+                (name, _hash_password(password), role, _node_text(nodes)),
             )
         except sqlite3.IntegrityError as exc:
             raise ValueError("that username already exists") from exc
+        self._db.commit()
+
+    def update_user(self, name: str, role: str, nodes: list[str] | None) -> None:
+        if role not in ROLES:
+            raise ValueError("unknown role")
+        cur = self._db.execute("UPDATE users SET role = ?, nodes = ? WHERE name = ?", (role, _node_text(nodes), name))
+        self._db.commit()
+        if cur.rowcount == 0:
+            raise ValueError("user was not found")
+
+    def set_password(self, name: str, password: str, keep_token: str | None = None) -> None:
+        """Replace a password and end that user's other sessions."""
+        _check_password(password)
+        cur = self._db.execute("UPDATE users SET password = ? WHERE name = ?", (_hash_password(password), name))
+        if cur.rowcount == 0:
+            self._db.rollback()
+            raise ValueError("user was not found")
+        self._db.execute("DELETE FROM sessions WHERE username = ? AND token != ?", (name, keep_token or ""))
         self._db.commit()
 
     def delete_user(self, name: str) -> None:

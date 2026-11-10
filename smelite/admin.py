@@ -31,6 +31,7 @@ ASTERISK_ACTIONS = {
     "asterisk_restart": ("core restart gracefully", "Asterisk is restarting. Links come back in about 20 seconds."),
 }
 POWER_ACTIONS = ("reboot", "poweroff")
+CONFIG_NAME = re.compile(r"(smelite|nodes|commands|dvswitch|node_info|favorites[A-Za-z0-9_-]{0,40})\.ini|asdb\.txt")
 MAX_TEXT = 1024 * 1024
 STAMP = re.compile(r"\d{8}-\d{6}(\.\d{3})?")
 
@@ -172,6 +173,22 @@ class AdminTools:
         if self.demo:
             return "demo: node status update skipped"
         return await self.run_helper(["node-status"])
+
+    async def write_config(self, name: str, data: bytes, actor: str) -> str:
+        """Replace one file in SM-Elite's config folder; it takes effect after restart_dashboard."""
+        if not CONFIG_NAME.fullmatch(name):
+            raise AdminError("that file does not belong in the config folder")
+        if self.demo:
+            return "demo: not written"
+        backup = await self.run_helper(["config-write", name], data)
+        log.warning("admin: %s restored %s from a settings backup (backup %s)", actor, name, backup)
+        return backup
+
+    async def restart_dashboard(self, actor: str) -> str:
+        log.warning("admin: %s restarted SM-Elite", actor)
+        if self.demo:
+            return "demo: restart skipped"
+        return await self.run_helper(["restart-dashboard"])
 
     async def power(self, action: str, actor: str) -> str:
         if action not in POWER_ACTIONS:

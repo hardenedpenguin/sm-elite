@@ -247,7 +247,10 @@ pre.diff .hunk { color: var(--muted); }
 .access-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 0.6rem 0; }
 .access-fields { display: grid; grid-template-columns: 8rem 1fr 1fr; gap: 0.6rem; }
 .schedule-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: 0.6rem; }
-.schedule-days { display: flex; flex-wrap: wrap; gap: 0.2rem 0.9rem; }
+.schedule-days { display: flex; flex-wrap: wrap; gap: 0.2rem 0.9rem; margin: 0 0 0.4rem 1.6rem; }
+.settings-parts { display: grid; gap: 0.3rem; margin: 0.4rem 0 0.6rem; }
+[data-panel="backup"] h3 { margin: 1rem 0 0.3rem; }
+#settings-file { margin: 0.3rem 0 0.6rem; }
 #schedule-list td.row-actions { white-space: normal; }
 #schedule-list td.row-actions button { margin: 0.1rem 0 0.1rem 0.3rem; }
 tr.paused td { opacity: 0.55; }

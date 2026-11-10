@@ -13,10 +13,14 @@ only this path in sudoers. It accepts a fixed set of actions and file names.
     smelite-admin sound-delete <name>
     smelite-admin bridge-restart        (DVSwitch mmdvm_bridge* and analog_bridge* units)
     smelite-admin node-status           (run sm-elite-node-status.service now)
+    smelite-admin config-write <name>   (a file for /etc/sm-elite from a settings backup, on stdin)
+    smelite-admin restart-dashboard     (restart sm-elite.service in 3 seconds)
 """
 
+import grp
 import hashlib
 import os
+import pwd
 import re
 import subprocess
 import sys
@@ -31,6 +35,9 @@ FILES = {
     "asdb.txt": Path("/etc/sm-elite/asdb.txt"),
     "node_info.ini": Path("/etc/sm-elite/node_info.ini"),
 }
+SMELITE_DIR = Path("/etc/sm-elite")
+SERVICE_USER = "smelite"
+CONFIG_NAME = re.compile(r"(smelite|nodes|commands|dvswitch|node_info|favorites[A-Za-z0-9_-]{0,40})\.ini|asdb\.txt")
 BACKUPS = Path("/var/backups/smelite")
 KEEP_BACKUPS = 20
 MAX_BYTES = 1024 * 1024
@@ -76,10 +83,7 @@ def restore(name: str, stamp: str, expected: str) -> None:
     replace(name, expected, backup_path(name, stamp).read_bytes())
 
 
-def replace(name: str, expected: str, data: bytes) -> None:
-    target = FILES.get(name)
-    if target is None:
-        fail("unknown file")
+def check_text(data: bytes) -> None:
     if len(data) > MAX_BYTES:
         fail("file is too large")
     if b"\x00" in data:
@@ -88,11 +92,45 @@ def replace(name: str, expected: str, data: bytes) -> None:
         data.decode("utf-8")
     except UnicodeDecodeError:
         fail("file is not valid UTF-8")
-    exists = target.is_file()
-    current = target.read_bytes() if exists else b""
+
+
+def replace(name: str, expected: str, data: bytes) -> None:
+    target = FILES.get(name)
+    if target is None:
+        fail("unknown file")
+    check_text(data)
+    current = target.read_bytes() if target.is_file() else b""
     if hashlib.sha256(current).hexdigest() != expected:
         fail("the file changed since it was loaded; reload it and try again", 3)
+    install(target, name, data, (-1, -1, 0o644))
 
+
+def config_write(name: str) -> None:
+    """Put one file from a settings backup into /etc/sm-elite, owned like setup leaves it."""
+    if not CONFIG_NAME.fullmatch(name):
+        fail("unknown file")
+    target = SMELITE_DIR / name
+    if target.is_symlink() or (target.exists() and not target.is_file()):
+        fail("unknown file")
+    data = sys.stdin.buffer.read(MAX_BYTES + 1)
+    check_text(data)
+    gid = grp.getgrnam(SERVICE_USER).gr_gid
+    if name.startswith("favorites"):
+        owner = (pwd.getpwnam(SERVICE_USER).pw_uid, gid, 0o644)
+    elif name in ("asdb.txt", "node_info.ini", "commands.ini"):
+        owner = (-1, -1, 0o644)
+    else:
+        owner = (-1, gid, 0o640)
+    install(target, name, data, owner)
+
+
+def install(target: Path, name: str, data: bytes, new_owner: tuple[int, int, int]) -> None:
+    """Write data over target, keeping a backup and the current owner and mode.
+
+    new_owner is (uid, gid, mode) for a new file; -1 leaves that id as root, which creates it.
+    """
+    exists = target.is_file()
+    current = target.read_bytes() if exists else b""
     backup = "none (new file)"
     if exists:
         BACKUPS.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -111,9 +149,10 @@ def replace(name: str, expected: str, data: bytes) -> None:
             handle.write(data)
             handle.flush()
             os.fsync(handle.fileno())
-        if info is not None:
-            os.chown(temp, info.st_uid, info.st_gid)
-        os.chmod(temp, info.st_mode & 0o7777 if info is not None else 0o644)
+        uid, gid, mode = (info.st_uid, info.st_gid, info.st_mode & 0o7777) if info is not None else new_owner
+        if (uid, gid) != (os.geteuid(), os.getegid()) and (uid, gid) != (-1, -1):
+            os.chown(temp, uid, gid)
+        os.chmod(temp, mode)
         os.replace(temp, target)
     except BaseException:
         if os.path.exists(temp):
@@ -189,6 +228,16 @@ def node_status() -> None:
     print("node status update started")
 
 
+def restart_dashboard() -> None:
+    subprocess.run(
+        ["/usr/bin/systemd-run", "--on-active=3s", "--unit", "smelite-restart", "--collect",
+         "/usr/bin/systemctl", "restart", "sm-elite.service"],
+        check=True,
+        stdout=subprocess.DEVNULL,
+    )
+    print("SM-Elite restarts in 3 seconds")
+
+
 def power(verb: str) -> None:
     subprocess.run(
         ["/usr/bin/systemd-run", "--on-active=5s", "--unit", f"smelite-{verb}", "/usr/bin/systemctl", verb],
@@ -211,6 +260,10 @@ def main(argv: list[str]) -> None:
         bridge_restart()
     elif argv == ["node-status"]:
         node_status()
+    elif argv == ["restart-dashboard"]:
+        restart_dashboard()
+    elif len(argv) == 2 and argv[0] == "config-write":
+        config_write(argv[1])
     elif len(argv) == 2 and argv[0] == "backups":
         list_backups(argv[1])
     elif len(argv) == 3 and argv[0] == "backup-show":
@@ -224,7 +277,8 @@ def main(argv: list[str]) -> None:
     else:
         fail("usage: smelite-admin check | write <name> <sha256> | reboot | poweroff"
              " | backups <name> | backup-show <name> <stamp> | restore <name> <stamp> <sha256>"
-             " | sound-save <name> | sound-delete <name> | bridge-restart | node-status", 2)
+             " | sound-save <name> | sound-delete <name> | bridge-restart | node-status"
+             " | config-write <name> | restart-dashboard", 2)
 
 
 if __name__ == "__main__":

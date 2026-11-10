@@ -37,11 +37,12 @@ const $ = (id) => document.getElementById(id);
 const BASE = new URL(".", location.href).pathname.replace(/\/$/, "");
 
 async function api(path, { method = "GET", body } = {}) {
+  const upload = body instanceof FormData;
   const response = await fetch(BASE + path, {
     method,
     credentials: "same-origin",
-    headers: body ? { "Content-Type": "application/json" } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
+    headers: body && !upload ? { "Content-Type": "application/json" } : undefined,
+    body: upload ? body : body ? JSON.stringify(body) : undefined,
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -170,6 +171,7 @@ function renderChrome() {
     login.textContent = "Log in";
   }
   $("users-btn").hidden = boot.user?.role !== "admin";
+  $("account-btn").hidden = !boot.user;
   $("admin-btn").hidden = boot.user?.role !== "admin" || !boot.admin_tools;
   $("system-btn").hidden = !["operator", "admin"].includes(boot.user?.role);
   $("setup-code-wrap").hidden = !boot.setup_code_file;
@@ -1351,25 +1353,84 @@ function wireDialogs() {
   });
   $("users-btn").addEventListener("click", openUsers);
   $("users-close").addEventListener("click", () => $("users-dialog").close());
+  $("users-cancel-edit").addEventListener("click", () => editUser(null));
   $("users-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = new FormData(event.target);
+    const editing = users_state.editing;
     try {
-      await api("/api/users", {
-        method: "POST",
-        body: {
-          username: form.get("username"),
-          password: form.get("password"),
-          role: form.get("role"),
-          nodes: form.get("nodes"),
-        },
-      });
-      event.target.reset();
+      if (editing) {
+        const password = form.get("password");
+        if (password && !confirm(`Set a new password for ${editing}? They are logged out everywhere.`)) return;
+        await api(`/api/users/${encodeURIComponent(editing)}`, {
+          method: "POST",
+          body: { role: form.get("role"), nodes: form.get("nodes"), password },
+        });
+      } else {
+        await api("/api/users", {
+          method: "POST",
+          body: {
+            username: form.get("username"),
+            password: form.get("password"),
+            role: form.get("role"),
+            nodes: form.get("nodes"),
+          },
+        });
+      }
+      editUser(null);
       await openUsers();
+      if (editing === state.boot.user?.name) {
+        state.boot = await api("/api/bootstrap");
+        renderChrome();
+      }
     } catch (error) {
       $("users-error").textContent = error.message;
     }
   });
+  $("account-btn").addEventListener("click", () => {
+    $("account-form").reset();
+    $("account-error").textContent = "";
+    $("account-title").textContent = `Account · ${state.boot.user.name} (${state.boot.user.role})`;
+    $("account-dialog").showModal();
+  });
+  $("account-close").addEventListener("click", () => $("account-dialog").close());
+  $("account-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = event.target;
+    if (form.password.value !== form.again.value) {
+      $("account-error").textContent = "The two new passwords do not match.";
+      return;
+    }
+    try {
+      await api("/api/account/password", { method: "POST", body: { current: form.current.value, password: form.password.value } });
+      form.reset();
+      $("account-dialog").close();
+      showResult("Account", "Your password was changed.");
+    } catch (error) {
+      $("account-error").textContent = error.message;
+    }
+  });
+}
+
+const users_state = { editing: null, users: [] };
+
+function editUser(user) {
+  users_state.editing = user ? user.name : null;
+  const form = $("users-form");
+  form.reset();
+  form.username.disabled = Boolean(user);
+  form.password.required = !user;
+  form.password.placeholder = user ? "leave blank to keep the current one" : "";
+  if (user) {
+    form.username.value = user.name;
+    form.role.value = user.role;
+    form.nodes.value = (user.nodes || []).join(", ");
+  }
+  $("users-form-title").textContent = user ? `Edit ${user.name}` : "Add a user";
+  $("users-submit").textContent = user ? "Save changes" : "Add user";
+  $("users-cancel-edit").hidden = !user;
+  $("users-error").textContent = "";
+  if (user) form.role.focus();
 }
 
 function admin() {
@@ -1610,7 +1671,7 @@ function wireSounds() {
   $("tts-save-btn").addEventListener("click", saveSound);
 }
 
-const schedule_state = { info: null };
+const schedule_state = { info: null, editing: null };
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const SCHEDULE_FIELDS = {
   connect: ["target", "permanent"],
@@ -1638,7 +1699,7 @@ async function loadSchedule() {
   }
   const info = schedule_state.info;
   const zone = info.timezone ? ` (${info.timezone})` : "";
-  $("schedule-clock").textContent = `Times use the node's clock${zone}. It is ${DAY_LABELS[info.weekday]} ${info.now} there now. Each action repeats every week on the days you pick.`;
+  $("schedule-clock").textContent = `Times use the node's clock${zone}. It is ${DAY_LABELS[info.weekday]} ${info.now} there now. An action repeats every week on the days you pick, or runs once on a date.`;
   renderScheduleList();
   return true;
 }
@@ -1681,6 +1742,7 @@ function renderScheduleList() {
     const actions = row.insertCell();
     actions.className = "row-actions";
     actions.append(
+      smallButton("Edit", () => editJob(job)),
       smallButton(job.enabled ? "Pause" : "Resume", () => toggleJob(job)),
       smallButton("Run now", () => runJob(job)),
       smallButton("Remove", () => removeJob(job)),
@@ -1715,6 +1777,7 @@ async function removeJob(job) {
   if (!confirm(`Remove the scheduled action "${scheduleWhat(job)}" on ${job.node} (${job.days_label} ${job.at})?`)) return;
   try {
     await api(`/api/schedule/${job.id}`, { method: "DELETE" });
+    if (schedule_state.editing === job.id) editJob(null);
     await loadSchedule();
     scheduleStatus("Removed.");
   } catch (error) {
@@ -1729,10 +1792,12 @@ function updateScheduleForm() {
   for (const element of form.querySelectorAll("[data-when]")) {
     element.hidden = !fields.includes(element.dataset.when);
   }
+  const once = form.querySelector("input[name=repeat]:checked").value === "once";
+  for (const box of form.querySelectorAll("input[name=day]")) box.disabled = once;
+  form.date.disabled = !once;
 }
 
-async function openSchedule() {
-  if (!(await loadSchedule())) return;
+function resetScheduleForm() {
   const info = schedule_state.info;
   const form = $("schedule-form");
   form.reset();
@@ -1742,19 +1807,53 @@ async function openSchedule() {
   form.template.replaceChildren(...info.commands.map((item) => new Option(item.label, item.command)));
   if (/^[0-9]{1,8}$/.test(state.target)) form.target.value = state.target;
   for (const box of form.querySelectorAll("input[name=day]")) box.checked = Number(box.value) === info.weekday;
+  form.date.min = info.today;
+  form.date.value = info.today;
+}
+
+function editJob(job) {
+  schedule_state.editing = job ? job.id : null;
+  resetScheduleForm();
+  const form = $("schedule-form");
+  if (job) {
+    if (![...form.node.options].some((option) => option.value === job.node)) form.node.append(new Option(job.node, job.node));
+    form.node.value = job.node;
+    form.kind.value = job.action;
+    form.target.value = job.target;
+    form.permanent.checked = job.permanent;
+    if (job.sound) form.sound.value = job.sound;
+    if (job.template) form.template.value = job.template;
+    form.querySelector(`input[name=scope][value=${job.scope === "links" ? "links" : "local"}]`).checked = true;
+    form.at.value = job.at;
+    form.note.value = job.note;
+    form.querySelector(`input[name=repeat][value=${job.date ? "once" : "weekly"}]`).checked = true;
+    if (job.date) form.date.value = job.date;
+    for (const box of form.querySelectorAll("input[name=day]")) box.checked = job.days.includes(Number(box.value));
+  }
+  $("schedule-form-title").textContent = job ? `Edit: ${scheduleWhat(job)} on ${job.node}` : "Add a scheduled action";
+  $("schedule-submit").textContent = job ? "Save changes" : "Add";
+  $("schedule-cancel-edit").hidden = !job;
   $("schedule-error").textContent = "";
-  scheduleStatus("");
   updateScheduleForm();
+  if (job) form.scrollIntoView({ block: "nearest" });
+}
+
+async function openSchedule() {
+  if (!(await loadSchedule())) return;
+  editJob(null);
+  scheduleStatus("");
   $("schedule-dialog").showModal();
 }
 
 async function addJob(event) {
   event.preventDefault();
   const form = event.target;
-  const days = [...form.querySelectorAll("input[name=day]:checked")].map((box) => Number(box.value));
+  const once = form.querySelector("input[name=repeat]:checked").value === "once";
+  const days = once ? [] : [...form.querySelectorAll("input[name=day]:checked")].map((box) => Number(box.value));
+  const editing = schedule_state.editing;
   try {
-    const result = await api("/api/schedule", {
-      method: "POST",
+    const result = await api(editing ? `/api/schedule/${editing}` : "/api/schedule", {
+      method: editing ? "PUT" : "POST",
       body: {
         node: form.node.value,
         action: form.kind.value,
@@ -1765,12 +1864,13 @@ async function addJob(event) {
         template: form.template.value,
         at: form.at.value,
         days,
+        date: once ? form.date.value : "",
         note: form.note.value.trim(),
       },
     });
-    $("schedule-error").textContent = "";
     await loadSchedule();
-    scheduleStatus(`Added: ${scheduleWhat(result.job)} on ${result.job.node}, ${result.job.days_label} at ${result.job.at}.`);
+    editJob(null);
+    scheduleStatus(`${editing ? "Saved" : "Added"}: ${scheduleWhat(result.job)} on ${result.job.node}, ${result.job.days_label} at ${result.job.at}.`);
   } catch (error) {
     $("schedule-error").textContent = error.message;
   }
@@ -1788,7 +1888,9 @@ function wireSchedule() {
   const form = $("schedule-form");
   form.kind.addEventListener("change", updateScheduleForm);
   form.template.addEventListener("change", updateScheduleForm);
+  for (const radio of form.querySelectorAll("input[name=repeat]")) radio.addEventListener("change", updateScheduleForm);
   form.addEventListener("submit", addJob);
+  $("schedule-cancel-edit").addEventListener("click", () => editJob(null));
   $("schedule-close").addEventListener("click", () => $("schedule-dialog").close());
 }
 
@@ -2267,6 +2369,8 @@ async function openAdmin() {
     files.append(optgroup);
   }
   admin_state.file = null;
+  $("settings-file").value = "";
+  $("settings-preview").hidden = true;
   adminStatus("");
   adminTab("system");
   $("admin-dialog").showModal();
@@ -2433,8 +2537,125 @@ async function loadAdminLog() {
   }
 }
 
+async function downloadSettings() {
+  const password = adminPassword();
+  if (!password) return;
+  adminStatus("Building the backup…");
+  try {
+    const response = await fetch(BASE + "/api/admin/settings-backup", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password }),
+    });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || `request failed (${response.status})`);
+    }
+    const blob = await response.blob();
+    const name = /filename="([^"]+)"/.exec(response.headers.get("Content-Disposition") || "")?.[1] || "sm-elite-settings.tar.gz";
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = name;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(link.href), 10000);
+    adminStatus(`Downloaded ${name}. It holds passwords, so keep it private.`);
+  } catch (error) {
+    adminStatus(error.message, true);
+  }
+}
+
+function backupForm(fields) {
+  const form = new FormData();
+  for (const [key, value] of Object.entries(fields)) form.append(key, value);
+  form.append("file", $("settings-file").files[0]);
+  return form;
+}
+
+function backupPartDetail(info, id) {
+  if (id === "config") return info.config.join(", ");
+  if (id === "accounts") return `${info.users} users (${info.admins} admin), ${info.jobs} scheduled actions`;
+  return info.data.filter((name) => name === "history.db" || name === "actions.db").join(", ");
+}
+
+async function inspectSettings() {
+  $("settings-preview").hidden = true;
+  if (!$("settings-file").files.length) return;
+  adminStatus("Reading the backup…");
+  try {
+    const info = await api("/api/admin/settings-inspect", { method: "POST", body: backupForm({}) });
+    const when = info.created ? new Date(info.created).toLocaleString() : "an unknown date";
+    $("settings-summary").textContent = `Made on ${info.host || "an unknown host"} by SM-Elite ${info.version || "(unknown version)"}, ${when}.`;
+    $("settings-parts").replaceChildren(...info.groups.map((group) => {
+      const label = document.createElement("label");
+      label.className = "check";
+      const box = document.createElement("input");
+      box.type = "checkbox";
+      box.value = group.id;
+      box.checked = group.id !== "history";
+      box.dataset.label = group.label;
+      const text = document.createElement("span");
+      const detail = document.createElement("span");
+      detail.className = "muted";
+      detail.textContent = ` (${backupPartDetail(info, group.id)})`;
+      text.append(group.label, detail);
+      label.append(box, text);
+      return label;
+    }));
+    $("settings-preview").hidden = false;
+    adminStatus("");
+  } catch (error) {
+    adminStatus(error.message, true);
+  }
+}
+
+async function waitForRestart() {
+  await new Promise((resolve) => setTimeout(resolve, 5000));
+  for (let tries = 0; tries < 60; tries += 1) {
+    try {
+      if ((await fetch(BASE + "/api/health", { cache: "no-store" })).ok) break;
+    } catch {
+      // still restarting
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+  location.reload();
+}
+
+async function restoreSettings() {
+  const boxes = [...document.querySelectorAll("#settings-parts input:checked")];
+  if (!boxes.length) {
+    adminStatus("Pick what to restore.", true);
+    return;
+  }
+  const password = adminPassword();
+  const labels = boxes.map((box) => box.dataset.label.toLowerCase());
+  if (!password || !confirm(`Replace the ${labels.join(", ")} on this node with the copies from the backup?`)) return;
+  adminStatus("Restoring…");
+  try {
+    const result = await api("/api/admin/settings-restore", {
+      method: "POST",
+      body: backupForm({ password, parts: boxes.map((box) => box.value).join(",") }),
+    });
+    let message = `Restored ${result.restored.join(", ")}.`;
+    if (result.restart) message += ` ${result.restart}. This page reloads when SM-Elite is back.`;
+    else if (result.logged_out) message += " Everyone was logged out; log in with an account from the backup.";
+    adminStatus(message);
+    $("admin-password").value = "";
+    if (result.restart) waitForRestart();
+    else if (result.logged_out) setTimeout(() => location.reload(), 4000);
+  } catch (error) {
+    adminStatus(error.message, true);
+  }
+}
+
 function wireAdmin() {
   $("admin-btn").addEventListener("click", openAdmin);
+  $("settings-download").addEventListener("click", downloadSettings);
+  $("settings-file").addEventListener("change", inspectSettings);
+  $("settings-restore").addEventListener("click", restoreSettings);
   $("admin-close").addEventListener("click", () => {
     if (admin_state.dirty && !confirm("Close and discard your unsaved changes?")) return;
     $("admin-password").value = "";
@@ -2470,25 +2691,35 @@ async function openUsers() {
   const data = await api("/api/users");
   const list = $("user-list");
   list.replaceChildren();
+  users_state.users = data.users;
   for (const user of data.users) {
     const row = document.createElement("div");
     row.className = "user-row";
     const label = document.createElement("span");
     const limit = user.nodes ? user.nodes.join(", ") : "all nodes";
     label.textContent = `${user.name} · ${user.role} · ${limit}`;
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "ghost";
-    button.textContent = "Remove";
-    button.addEventListener("click", async () => {
-      await api(`/api/users/${encodeURIComponent(user.name)}`, { method: "DELETE" });
-      await openUsers();
-    });
-    row.append(label, button);
+    const buttons = document.createElement("span");
+    buttons.className = "row-actions";
+    buttons.append(
+      smallButton("Edit", () => editUser(user)),
+      smallButton("Remove", async () => {
+        if (!confirm(`Remove ${user.name}? Their scheduled actions stop running.`)) return;
+        try {
+          await api(`/api/users/${encodeURIComponent(user.name)}`, { method: "DELETE" });
+          if (users_state.editing === user.name) editUser(null);
+          await openUsers();
+        } catch (error) {
+          $("users-error").textContent = error.message;
+        }
+      }),
+    );
+    row.append(label, buttons);
     list.append(row);
   }
-  $("users-error").textContent = "";
-  if (!$("users-dialog").open) $("users-dialog").showModal();
+  if (!$("users-dialog").open) {
+    editUser(null);
+    $("users-dialog").showModal();
+  }
 }
 
 async function boot() {
