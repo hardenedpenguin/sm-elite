@@ -128,7 +128,7 @@ The dashboard trusts `X-Forwarded-For` and `X-Forwarded-Proto` only from the add
 | `[nodes]` | `file`: AMI logins in Allmon3 / supermon-ng stanza format (`host`, `port`, `user`, `pass` or `passwd`, `voters`, `multinodes`) |
 | `[favorites]` | `directory` holding Supermon-style `favorites.ini` files |
 | `[commands]` | `file` with the command templates for the More commands menu |
-| `[database]` | `url`, `file`, `private` (your own node names), `refresh_minutes` for the AllStar node directory |
+| `[database]` | `url`, `file`, `private` (your own node names, see [Private node names](#private-node-names-asdbtxt)), `refresh_minutes` for the AllStar node directory |
 | `[stats]` | `enabled`, `min_gap_seconds` between AllStar stats requests |
 | `[history]` | `enabled`, `keep_days` for last heard |
 | `[admin]` | `enabled`, `config_dir` (`/etc/asterisk`), `log_file`, `helper` |
@@ -137,6 +137,28 @@ The dashboard trusts `X-Forwarded-For` and `X-Forwarded-Proto` only from the add
 | `[dvswitch]` | `file` with the DVSwitch bridges and talkgroups (default `dvswitch.ini`) |
 
 Text-to-speech needs `piper` and `sox` on the node and at least one voice in `/var/lib/piper-tts`. Without them the Announce dialog still plays saved sounds.
+
+### Private node names (asdb.txt)
+
+Private nodes, IRLP or EchoLink gateways, and anything else missing from the AllStar node directory show up as a bare number. Give them a name in `/etc/sm-elite/asdb.txt`, one node per line:
+
+```
+node|callsign|description|location
+```
+
+For example:
+
+```
+1999|W5GLE|Shop radio|Alvin, Texas
+80016|NEWSLINE|[IRLP EXP0016]|Amateur Radio Newsline
+89990|REF9990|[IRLP 9990]|ECHO Reflector
+```
+
+- Lines starting with `;` or `#` are comments. The package installs the file with a commented example.
+- Entries here win over the AllStar directory, so you can also rename a public node.
+- The names appear in node cards, favorites, Find a node, the Who can connect lists, and last heard (from the next keyup on; earlier entries keep the name they were saved with).
+- Edit it as root (`sudo nano /etc/sm-elite/asdb.txt`). SM-Elite reads it again on the next directory refresh (every 15 minutes, `refresh_minutes` in `[database]`), or right away after `sudo systemctl restart sm-elite`.
+- Coming from Supermon or supermon-ng: `privatenodes.txt` uses the same format, so its lines can be copied in as they are.
 
 ## DVSwitch
 
