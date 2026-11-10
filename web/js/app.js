@@ -217,7 +217,7 @@ function renderNav() {
 }
 
 function selectNodes(ids) {
-  state.selected = ids.filter((id, index) => ids.indexOf(id) === index);
+  state.selected = ids.filter((id, index) => ids.indexOf(id) === index).sort(compareNodes);
   if (!state.selected.includes(state.local)) state.local = state.selected[0] || "";
   history.replaceState(null, "", `#${state.selected.join(",")}`);
   renderNav();
@@ -273,7 +273,11 @@ function renderControl() {
   if (operator()) {
     const tools = document.createElement("div");
     tools.className = "ctl-tools";
-    tools.append(actionButton("Announce", openSounds), actionButton("Who can connect", openAccess));
+    tools.append(
+      actionButton("Announce", openSounds),
+      actionButton("Who can connect", openAccess),
+      actionButton("Schedule", openSchedule),
+    );
     if (dvsNodes().length) tools.append(actionButton("DVSwitch", openDvswitch));
     head.append(tools);
   }
@@ -361,6 +365,19 @@ function pruneCards() {
   renderVoters();
 }
 
+function nodeRank(id) {
+  const text = String(id);
+  if (!/^\d+$/.test(text)) return [2, 0];
+  const number = Number(text);
+  return [number < 2000 ? 1 : 0, number];
+}
+
+function compareNodes(a, b) {
+  const [groupA, numberA] = nodeRank(a);
+  const [groupB, numberB] = nodeRank(b);
+  return groupA - groupB || numberA - numberB || String(a).localeCompare(String(b));
+}
+
 function cardFor(id) {
   let card = document.querySelector(`.card[data-node="${nodeAttr(id)}"]`);
   if (card) return card;
@@ -378,7 +395,8 @@ function cardFor(id) {
       <tbody></tbody>
     </table>
     <details><summary>Link map</summary><svg class="map" role="img" aria-label="Link map"></svg></details>`;
-  $("nodes").append(card);
+  const later = [...$("nodes").querySelectorAll(".card")].find((other) => compareNodes(id, other.dataset.node) < 0);
+  $("nodes").insertBefore(card, later || null);
   return card;
 }
 
@@ -1592,6 +1610,188 @@ function wireSounds() {
   $("tts-save-btn").addEventListener("click", saveSound);
 }
 
+const schedule_state = { info: null };
+const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const SCHEDULE_FIELDS = {
+  connect: ["target", "permanent"],
+  monitor: ["target", "permanent"],
+  local_monitor: ["target", "permanent"],
+  disconnect: ["target"],
+  disconnect_all: [],
+  play: ["sound", "scope"],
+  command: ["command"],
+};
+
+function scheduleStatus(text, isError = false) {
+  const line = $("schedule-status");
+  line.textContent = text;
+  line.classList.toggle("form-error", isError);
+}
+
+async function loadSchedule() {
+  try {
+    schedule_state.info = await api("/api/schedule");
+  } catch (error) {
+    if ($("schedule-dialog").open) scheduleStatus(error.message, true);
+    else showResult("Schedule", error.message);
+    return false;
+  }
+  const info = schedule_state.info;
+  const zone = info.timezone ? ` (${info.timezone})` : "";
+  $("schedule-clock").textContent = `Times use the node's clock${zone}. It is ${DAY_LABELS[info.weekday]} ${info.now} there now. Each action repeats every week on the days you pick.`;
+  renderScheduleList();
+  return true;
+}
+
+function scheduleWhat(job) {
+  if (job.action === "play") {
+    return `Play ${job.sound} on ${job.scope === "links" ? "the node and its links" : "this node"}`;
+  }
+  if (job.action === "command") {
+    const known = (schedule_state.info?.commands || []).find((item) => item.command === job.template);
+    return [known ? known.label : job.template, job.target].filter(Boolean).join(" ");
+  }
+  const text = [job.action_label, job.target].filter(Boolean).join(" ");
+  return job.permanent ? `${text} (permanent)` : text;
+}
+
+function renderScheduleList() {
+  const list = $("schedule-list");
+  const jobs = schedule_state.info?.jobs || [];
+  if (!jobs.length) {
+    list.replaceChildren(Object.assign(document.createElement("p"), { className: "muted small", textContent: "Nothing is scheduled yet." }));
+    return;
+  }
+  const table = document.createElement("table");
+  table.className = "heard";
+  const head = table.createTHead().insertRow();
+  for (const label of ["When", "Node", "Action", "Note", "Added by", "Last run", ""]) {
+    head.append(Object.assign(document.createElement("th"), { textContent: label }));
+  }
+  const body = table.createTBody();
+  for (const job of jobs) {
+    const row = body.insertRow();
+    if (!job.enabled) row.className = "paused";
+    row.insertCell().textContent = `${job.days_label} ${job.at}${job.enabled ? "" : " (paused)"}`;
+    row.insertCell().textContent = job.node;
+    row.insertCell().textContent = scheduleWhat(job);
+    row.insertCell().textContent = job.note;
+    row.insertCell().textContent = job.owner;
+    row.insertCell().textContent = job.last_run ? `${whenLabel(job.last_run)} · ${job.last_result}` : "Not yet";
+    const actions = row.insertCell();
+    actions.className = "row-actions";
+    actions.append(
+      smallButton(job.enabled ? "Pause" : "Resume", () => toggleJob(job)),
+      smallButton("Run now", () => runJob(job)),
+      smallButton("Remove", () => removeJob(job)),
+    );
+  }
+  list.replaceChildren(table);
+}
+
+async function toggleJob(job) {
+  try {
+    await api(`/api/schedule/${job.id}`, { method: "POST", body: { enabled: !job.enabled } });
+    await loadSchedule();
+    scheduleStatus(job.enabled ? `Paused ${scheduleWhat(job)}.` : `Resumed ${scheduleWhat(job)}.`);
+  } catch (error) {
+    scheduleStatus(error.message, true);
+  }
+}
+
+async function runJob(job) {
+  if (!confirm(`${scheduleWhat(job)} on ${job.node} now?`)) return;
+  scheduleStatus("Running…");
+  try {
+    const result = await api(`/api/schedule/${job.id}/run`, { method: "POST", body: {} });
+    await loadSchedule();
+    scheduleStatus(result.result, result.result.startsWith("failed") || result.result.startsWith("skipped"));
+  } catch (error) {
+    scheduleStatus(error.message, true);
+  }
+}
+
+async function removeJob(job) {
+  if (!confirm(`Remove the scheduled action "${scheduleWhat(job)}" on ${job.node} (${job.days_label} ${job.at})?`)) return;
+  try {
+    await api(`/api/schedule/${job.id}`, { method: "DELETE" });
+    await loadSchedule();
+    scheduleStatus("Removed.");
+  } catch (error) {
+    scheduleStatus(error.message, true);
+  }
+}
+
+function updateScheduleForm() {
+  const form = $("schedule-form");
+  const fields = [...(SCHEDULE_FIELDS[form.kind.value] || [])];
+  if (form.kind.value === "command" && form.template.value.includes("%")) fields.push("target");
+  for (const element of form.querySelectorAll("[data-when]")) {
+    element.hidden = !fields.includes(element.dataset.when);
+  }
+}
+
+async function openSchedule() {
+  if (!(await loadSchedule())) return;
+  const info = schedule_state.info;
+  const form = $("schedule-form");
+  form.reset();
+  form.node.replaceChildren(...info.nodes.map((id) => new Option(id, id, false, id === state.local)));
+  form.kind.replaceChildren(...info.actions.map((item) => new Option(item.label, item.id)));
+  form.sound.replaceChildren(...info.sounds.map((name) => new Option(name, name)));
+  form.template.replaceChildren(...info.commands.map((item) => new Option(item.label, item.command)));
+  if (/^[0-9]{1,8}$/.test(state.target)) form.target.value = state.target;
+  for (const box of form.querySelectorAll("input[name=day]")) box.checked = Number(box.value) === info.weekday;
+  $("schedule-error").textContent = "";
+  scheduleStatus("");
+  updateScheduleForm();
+  $("schedule-dialog").showModal();
+}
+
+async function addJob(event) {
+  event.preventDefault();
+  const form = event.target;
+  const days = [...form.querySelectorAll("input[name=day]:checked")].map((box) => Number(box.value));
+  try {
+    const result = await api("/api/schedule", {
+      method: "POST",
+      body: {
+        node: form.node.value,
+        action: form.kind.value,
+        target: form.target.value.trim(),
+        permanent: form.permanent.checked,
+        sound: form.sound.value,
+        scope: form.querySelector("input[name=scope]:checked").value,
+        template: form.template.value,
+        at: form.at.value,
+        days,
+        note: form.note.value.trim(),
+      },
+    });
+    $("schedule-error").textContent = "";
+    await loadSchedule();
+    scheduleStatus(`Added: ${scheduleWhat(result.job)} on ${result.job.node}, ${result.job.days_label} at ${result.job.at}.`);
+  } catch (error) {
+    $("schedule-error").textContent = error.message;
+  }
+}
+
+function wireSchedule() {
+  const days = $("schedule-days");
+  days.replaceChildren(...DAY_LABELS.map((label, index) => {
+    const wrap = document.createElement("label");
+    wrap.className = "check";
+    const box = Object.assign(document.createElement("input"), { type: "checkbox", name: "day", value: String(index) });
+    wrap.append(box, document.createTextNode(label));
+    return wrap;
+  }));
+  const form = $("schedule-form");
+  form.kind.addEventListener("change", updateScheduleForm);
+  form.template.addEventListener("change", updateScheduleForm);
+  form.addEventListener("submit", addJob);
+  $("schedule-close").addEventListener("click", () => $("schedule-dialog").close());
+}
+
 const dvs_state = { node: "", info: null, mode: "", network: "" };
 
 function dvsNodes() {
@@ -1909,6 +2109,52 @@ function renderDatabase() {
   $("db-table").replaceChildren(table);
 }
 
+const actions_state = { items: [], more: false, keepDays: 0 };
+const ACTIONS_PAGE = 200;
+
+async function loadActions(older = false) {
+  const before = older && actions_state.items.length ? actions_state.items[actions_state.items.length - 1].at : null;
+  $("actions-count").textContent = "Loading…";
+  try {
+    const data = await api(`/api/actions?limit=${ACTIONS_PAGE}${before ? `&before=${before}` : ""}`);
+    actions_state.items = older ? actions_state.items.concat(data.items) : data.items;
+    actions_state.more = data.items.length === ACTIONS_PAGE;
+    actions_state.keepDays = data.keep_days;
+    renderActions();
+  } catch (error) {
+    $("actions-count").textContent = error.message;
+  }
+}
+
+function renderActions() {
+  const words = $("actions-filter").value.toLowerCase().split(/\s+/).filter(Boolean);
+  const rows = actions_state.items.filter((row) => {
+    const hay = `${row.user} ${row.action} ${row.node} ${row.target} ${row.detail} ${row.peer}`.toLowerCase();
+    return words.every((word) => hay.includes(word));
+  });
+  const shown = `${rows.length} of ${actions_state.items.length} loaded entries.`;
+  $("actions-count").textContent = `${shown} Entries are kept for ${actions_state.keepDays} days.`;
+  $("actions-older").hidden = !actions_state.more;
+  const table = document.createElement("table");
+  table.className = "heard";
+  const head = table.createTHead().insertRow();
+  for (const label of ["When", "User", "Action", "Node", "Target", "Detail", "From"]) {
+    head.append(Object.assign(document.createElement("th"), { textContent: label }));
+  }
+  const body = table.createTBody();
+  for (const row of rows) {
+    const line = body.insertRow();
+    line.insertCell().textContent = whenLabel(row.at);
+    line.insertCell().textContent = row.user || "—";
+    line.insertCell().textContent = row.action;
+    line.insertCell().textContent = row.node;
+    line.insertCell().textContent = row.target;
+    line.insertCell().textContent = row.detail;
+    line.insertCell().textContent = row.peer;
+  }
+  $("actions-table").replaceChildren(table);
+}
+
 function systemTab(name) {
   system_state.tab = name;
   for (const button of document.querySelectorAll("#system-dialog [data-systab]")) {
@@ -1918,10 +2164,12 @@ function systemTab(name) {
     panel.hidden = panel.dataset.syspanel !== name;
   }
   if (name === "database") loadDatabase();
+  if (name === "actions") loadActions();
 }
 
 function openSystem() {
   $("system-db-tab").hidden = !admin();
+  $("system-actions-tab").hidden = !admin();
   systemTab("server");
   $("system-dialog").showModal();
   loadSystem();
@@ -1930,7 +2178,13 @@ function openSystem() {
 function wireSystem() {
   $("system-btn").addEventListener("click", openSystem);
   $("system-close").addEventListener("click", () => $("system-dialog").close());
-  $("system-refresh").addEventListener("click", () => (system_state.tab === "database" ? loadDatabase() : loadSystem()));
+  $("system-refresh").addEventListener("click", () => {
+    if (system_state.tab === "database") loadDatabase();
+    else if (system_state.tab === "actions") loadActions();
+    else loadSystem();
+  });
+  $("actions-filter").addEventListener("input", renderActions);
+  $("actions-older").addEventListener("click", () => loadActions(true));
   for (const button of document.querySelectorAll("#system-dialog [data-systab]")) {
     button.addEventListener("click", () => systemTab(button.dataset.systab));
   }
@@ -1947,6 +2201,20 @@ const ADMIN_CONFIRM = {
 };
 
 const admin_state = { file: null };
+
+const FILE_HINTS = {
+  "rpt.conf": "Changes take effect after Restart app_rpt.",
+  "iax.conf": "Changes take effect after Reload Asterisk config.",
+  "extensions.conf": "Changes take effect after Reload Asterisk config.",
+  "asdb.txt": "Names for private nodes and nodes missing from the AllStar directory, one per line: node|callsign|description|location. They apply as soon as you save.",
+  "node_info.ini": "Settings for the node status block: the nodes to update, weather code and location, temperature unit, and the alert source. A status update runs as soon as you save.",
+};
+
+function nextStep(name, applied) {
+  if (applied) return applied;
+  const action = name === "rpt.conf" ? "Restart app_rpt" : "Reload Asterisk config";
+  return `Use "${action}" on the Node & server tab to apply it.`;
+}
 
 function adminStatus(text, isError = false) {
   const line = $("admin-status");
@@ -1989,7 +2257,15 @@ async function openAdmin() {
   const nodes = $("admin-node");
   nodes.replaceChildren(...info.nodes.map((id) => new Option(id, id, false, id === state.local)));
   const files = $("admin-file");
-  files.replaceChildren(...info.files.map((file) => new Option(file.name, file.name)));
+  files.replaceChildren();
+  for (const [group, label] of [["asterisk", "Asterisk"], ["sm-elite", "SM-Elite"]]) {
+    const members = info.files.filter((file) => (file.group || "asterisk") === group);
+    if (!members.length) continue;
+    const optgroup = document.createElement("optgroup");
+    optgroup.label = label;
+    optgroup.append(...members.map((file) => new Option(file.name, file.name)));
+    files.append(optgroup);
+  }
   admin_state.file = null;
   adminStatus("");
   adminTab("system");
@@ -2018,6 +2294,7 @@ async function loadAdminFile(name) {
     admin_state.file = await api(`/api/admin/file?name=${encodeURIComponent(name)}`);
     admin_state.dirty = false;
     $("admin-text").value = admin_state.file.text;
+    $("admin-file-hint").textContent = `${FILE_HINTS[name] || ""} Saving keeps a backup of the previous version in /var/backups/smelite.`.trim();
     if (!$("admin-backups").hidden) loadBackups();
     adminStatus(`Loaded ${name}.`);
   } catch (error) {
@@ -2044,8 +2321,7 @@ async function saveAdminFile() {
     admin_state.dirty = false;
     $("admin-text").value = saved.text;
     if (!$("admin-backups").hidden) loadBackups();
-    const next = file.name === "rpt.conf" ? "Restart app_rpt" : "Reload Asterisk config";
-    adminStatus(`Saved ${file.name}. The old version was backed up to ${saved.backup}. Use "${next}" on the Node & server tab to apply it.`);
+    adminStatus(`Saved ${file.name}. The old version was backed up to ${saved.backup}. ${nextStep(file.name, saved.applied)}`);
   } catch (error) {
     adminStatus(error.message, true);
   }
@@ -2139,8 +2415,7 @@ async function restoreBackup(backup) {
     $("admin-text").value = restored.text;
     $("admin-diff").hidden = true;
     renderBackups(restored.backups);
-    const next = file.name === "rpt.conf" ? "Restart app_rpt" : "Reload Asterisk config";
-    adminStatus(`Restored ${file.name} from ${when}. Use "${next}" on the Node & server tab to apply it.`);
+    adminStatus(`Restored ${file.name} from ${when}. ${nextStep(file.name, restored.applied)}`);
   } catch (error) {
     adminStatus(error.message, true);
   }
@@ -2226,7 +2501,7 @@ async function boot() {
   const hash = location.hash.replace("#", "");
   const known = new Set((state.boot.nodes || []).map((node) => node.id));
   const fromHash = hash.split(",").map((part) => part.trim()).filter((id) => known.has(id));
-  state.selected = fromHash.length ? fromHash : (state.boot.nodes || []).map((node) => node.id);
+  state.selected = (fromHash.length ? fromHash : (state.boot.nodes || []).map((node) => node.id)).sort(compareNodes);
   state.local = state.selected[0] || "";
   state.favFile = (state.boot.favorites || [])[0] || "favorites.ini";
   renderChrome();
@@ -2236,6 +2511,7 @@ async function boot() {
   wireAccess();
   wireAdmin();
   wireSounds();
+  wireSchedule();
   wireDvswitch();
   wireSystem();
   wireAlerts();

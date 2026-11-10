@@ -167,6 +167,10 @@ class AuthStore:
             for row in rows
         ]
 
+    def get_user(self, name: str) -> User | None:
+        row = self._db.execute("SELECT * FROM users WHERE name = ?", (name,)).fetchone()
+        return None if row is None else self._user_from_row(row)
+
     def _user_from_row(self, row: sqlite3.Row) -> User:
         nodes = tuple(row["nodes"].split(",")) if row["nodes"] else None
         return User(name=row["name"], role=row["role"], nodes=nodes)

@@ -27,10 +27,12 @@ class SetupEndpointTests(AioHTTPTestCase):
     async def get_application(self):
         self.tmp = tempfile.TemporaryDirectory()
         data = Path(self.tmp.name)
+        self.recorded = []
         self.engine = SimpleNamespace(
             settings=SimpleNamespace(demo=False, data_dir=data),
             auth=AuthStore(data / "smelite.db"),
             login_failures={},
+            record=lambda user, action, **fields: self.recorded.append((user, action)),
         )
         self.code = setup_code(data / "setup-code")
         app = web.Application()
@@ -56,6 +58,7 @@ class SetupEndpointTests(AioHTTPTestCase):
         self.assertEqual(response.status, 200)
         self.assertEqual(self.engine.auth.user_count(), 1)
         self.assertFalse((Path(self.tmp.name) / "setup-code").exists())
+        self.assertEqual(self.recorded, [("owner", "create admin account")])
         self.assertEqual((await self.post(self.code)).status, 409)
 
     async def test_guessing_is_rate_limited(self):

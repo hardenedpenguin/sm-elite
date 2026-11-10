@@ -20,6 +20,11 @@ from pathlib import Path
 log = logging.getLogger("smelite")
 
 CONFIG_FILES = ("rpt.conf", "iax.conf", "extensions.conf")
+SMELITE_FILES = ("asdb.txt", "node_info.ini")
+DEMO_TEXT = {
+    "asdb.txt": "; node|callsign|description|location\n1998|N0CALL|SM-Elite demo repeater|Local\n",
+    "node_info.ini": "[general]\nNODE = 1998 1999\nWX_CODE = 00000\nTEMP_UNIT = F\n",
+}
 ASTERISK_ACTIONS = {
     "reload": ("core reload", "Reloaded Asterisk configuration."),
     "rpt_restart": ("rpt restart", "app_rpt is restarting. Links drop and come back in a few seconds."),
@@ -44,36 +49,52 @@ def digest(data: bytes) -> str:
 
 
 class AdminTools:
-    def __init__(self, enabled: bool, config_dir: Path, log_file: Path, helper: str, demo: bool = False):
+    def __init__(
+        self,
+        enabled: bool,
+        config_dir: Path,
+        log_file: Path,
+        helper: str,
+        demo: bool = False,
+        smelite_dir: Path | None = None,
+    ):
         self.enabled = enabled
         self.config_dir = config_dir
+        self.smelite_dir = smelite_dir
         self.log_file = log_file
         self.helper = helper
         self.demo = demo
         self._demo_files = {
             name: f"; demo copy of {name}\n[1998]\nrxchannel = dahdi/pseudo\n".encode() for name in CONFIG_FILES
         }
+        self._demo_files.update({name: text.encode() for name, text in DEMO_TEXT.items()})
         self._demo_backups: dict[str, list[tuple[str, bytes]]] = {}
 
     def _path(self, name: str) -> Path:
-        if name not in CONFIG_FILES:
-            raise AdminError("that file is not editable here")
-        return self.config_dir / name
+        if name in CONFIG_FILES:
+            return self.config_dir / name
+        if name in SMELITE_FILES and self.smelite_dir is not None:
+            return self.smelite_dir / name
+        raise AdminError("that file is not editable here")
 
     def _bytes(self, name: str) -> bytes:
         path = self._path(name)
         if self.demo:
             return self._demo_files[name]
+        if name in SMELITE_FILES and not path.exists():
+            return b""
         return path.read_bytes()
 
     def files(self) -> list[dict]:
         found = []
-        for name in CONFIG_FILES:
+        names = CONFIG_FILES + (SMELITE_FILES if self.smelite_dir is not None else ())
+        for name in names:
             try:
                 size = len(self._bytes(name))
             except OSError:
                 continue
-            found.append({"name": name, "size": size})
+            group = "sm-elite" if name in SMELITE_FILES else "asterisk"
+            found.append({"name": name, "size": size, "group": group})
         return found
 
     def read(self, name: str) -> dict:
@@ -146,6 +167,11 @@ class AdminTools:
                     return data
             raise AdminError("unknown backup")
         return await self.run_helper_bytes(["backup-show", name, stamp])
+
+    async def node_status(self) -> str:
+        if self.demo:
+            return "demo: node status update skipped"
+        return await self.run_helper(["node-status"])
 
     async def power(self, action: str, actor: str) -> str:
         if action not in POWER_ACTIONS:

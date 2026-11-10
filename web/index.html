@@ -173,6 +173,43 @@
     </div>
   </dialog>
 
+  <dialog id="schedule-dialog" class="wider">
+    <h2>Schedule</h2>
+    <p id="schedule-clock" class="hint"></p>
+    <div id="schedule-list"></div>
+    <form id="schedule-form">
+      <h3>Add a scheduled action</h3>
+      <div class="schedule-fields">
+        <label>Node <select name="node"></select></label>
+        <label>Action <select name="kind"></select></label>
+        <label data-when="target">Target node <input name="target" inputmode="numeric" pattern="[0-9]{1,8}" maxlength="8"></label>
+        <label data-when="sound">Sound <select name="sound"></select></label>
+        <label data-when="command">Command <select name="template"></select></label>
+        <label>Time <input name="at" type="time" required></label>
+      </div>
+      <fieldset class="scope">
+        <legend>Days</legend>
+        <div id="schedule-days" class="schedule-days"></div>
+      </fieldset>
+      <label class="check" data-when="permanent"><input type="checkbox" name="permanent"> Permanent link</label>
+      <fieldset class="scope" data-when="scope">
+        <legend>Play on</legend>
+        <label class="check"><input type="radio" name="scope" value="local" checked> This node's radio only</label>
+        <label class="check"><input type="radio" name="scope" value="links"> This node and every connected link</label>
+      </fieldset>
+      <label>Note <input name="note" maxlength="80" placeholder="optional, for example Tuesday night net"></label>
+      <p id="schedule-error" class="form-error"></p>
+      <div class="dialog-actions">
+        <button type="submit">Add</button>
+      </div>
+    </form>
+    <p class="hint">A scheduled action runs with the permissions of the user who added it. Removing that user, or taking away their access to the node, stops it.</p>
+    <p id="schedule-status" class="hint"></p>
+    <div class="dialog-actions">
+      <button type="button" id="schedule-close" class="ghost">Close</button>
+    </div>
+  </dialog>
+
   <dialog id="dvs-dialog" class="wide">
     <h2 id="dvs-title">DVSwitch</h2>
     <p id="dvs-now" class="dvs-now"></p>
@@ -242,6 +279,7 @@
     <nav class="tabs" aria-label="System sections">
       <button type="button" data-systab="server" class="on">Server</button>
       <button type="button" data-systab="database" id="system-db-tab">AllStar database</button>
+      <button type="button" data-systab="actions" id="system-actions-tab">Action log</button>
       <button type="button" id="system-refresh" class="ghost">Refresh</button>
     </nav>
     <section data-syspanel="server">
@@ -254,6 +292,16 @@
       </div>
       <p id="db-count" class="hint"></p>
       <div id="db-table" class="db-table"></div>
+    </section>
+    <section data-syspanel="actions" hidden>
+      <div class="file-bar">
+        <input id="actions-filter" type="search" placeholder="Filter by user, action, node, or detail" aria-label="Filter the action log">
+      </div>
+      <p id="actions-count" class="hint"></p>
+      <div id="actions-table" class="db-table"></div>
+      <div class="file-bar">
+        <button type="button" id="actions-older" class="ghost" hidden>Load older</button>
+      </div>
     </section>
     <p id="system-status" class="hint"></p>
     <div class="dialog-actions">
@@ -301,7 +349,7 @@
         <pre id="admin-diff" class="log diff" hidden></pre>
       </div>
       <textarea id="admin-text" spellcheck="false" wrap="off" rows="24"></textarea>
-      <p class="hint">Saving keeps a backup of the previous version in /var/backups/smelite. Changes take effect after a reload or restart.</p>
+      <p id="admin-file-hint" class="hint"></p>
     </section>
 
     <section data-panel="log" hidden>

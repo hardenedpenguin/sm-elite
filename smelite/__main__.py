@@ -10,11 +10,13 @@ from pathlib import Path
 
 from aiohttp import web
 
+from .actions import ActionLog
 from .astdb import NodeDirectory
 from .auth import AuthStore
 from .config import NodeConfig, load_settings
 from .history import HistoryStore
 from .monitor import Engine
+from .schedule import ScheduleStore
 from .server import create_app
 
 
@@ -65,7 +67,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     auth = AuthStore(settings.data_dir / "smelite.db")
     history = HistoryStore(settings.data_dir / "history.db", settings.history_days)
-    engine = Engine(settings, auth, directory, history)
+    actions = ActionLog(settings.data_dir / "actions.db", settings.action_days)
+    schedule = ScheduleStore(settings.data_dir / "schedule.db")
+    engine = Engine(settings, auth, directory, history, actions, schedule)
     app = create_app(engine)
     web.run_app(
         app, host=settings.listen, port=settings.port,

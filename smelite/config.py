@@ -57,6 +57,7 @@ class Settings:
     public: str = "read"
     data_dir: Path = Path("data")
     demo: bool = False
+    config_dir: Path = Path("config")
     title: str = "SM-Elite"
     callsign: str = ""
     location: str = ""
@@ -73,6 +74,7 @@ class Settings:
     stats_gap: float = 2.2
     history_enabled: bool = True
     history_days: int = 30
+    action_days: int = 90
     admin_enabled: bool = False
     admin_config_dir: Path = Path("/etc/asterisk")
     admin_log_file: Path = Path("/var/log/asterisk/messages.log")
@@ -100,6 +102,17 @@ class Settings:
             found.append(node.node)
             found.extend(node.extras)
         return found
+
+
+PRIVATE_NODE_LIMIT = 2000
+
+
+def node_order(node: str) -> tuple[int, int, str]:
+    """Public nodes first, then private ones (below 2000), each in numeric order."""
+    if node.isdigit():
+        number = int(node)
+        return (1 if number < PRIVATE_NODE_LIMIT else 0, number, node)
+    return (2, 0, node)
 
 
 def _split_nodes(value: str) -> list[str]:
@@ -175,6 +188,7 @@ def load_settings(path: Path) -> Settings:
     parser = configparser.ConfigParser(interpolation=None)
     parser.read(path, encoding="utf-8")
     root = path.parent
+    settings.config_dir = root.resolve()
 
     def resolve(value: str) -> Path:
         candidate = Path(value)
@@ -221,6 +235,7 @@ def load_settings(path: Path) -> Settings:
     history = parser["history"] if parser.has_section("history") else {}
     settings.history_enabled = history.get("enabled", "yes").strip().lower() not in {"no", "false", "0"}
     settings.history_days = max(1, int(history.get("keep_days", settings.history_days)))
+    settings.action_days = max(1, int(history.get("action_days", settings.action_days)))
 
     admin = parser["admin"] if parser.has_section("admin") else {}
     settings.admin_enabled = admin.get("enabled", "no").strip().lower() in {"yes", "true", "1"}

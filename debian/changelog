@@ -1,3 +1,18 @@
+sm-elite (0.2.11) unstable; urgency=medium
+
+  * List nodes with public nodes first, then private nodes (below 2000),
+    each in numeric order, in the node buttons, groups, the Local node menu,
+    and the node cards.
+  * Schedule: weekly connect, monitor, disconnect, saved sound, or
+    commands.ini actions at a set time, run as the user who added them.
+  * Action log for admins under System: control actions, announcements,
+    access list and DVSwitch changes, schedules, file edits, restarts,
+    users, and logins, kept for 90 days.
+  * Admin config editor also edits asdb.txt (names apply on save) and
+    node_info.ini (the status updater runs on save), with backups.
+
+ -- Jory A. Pratt <geekypenguin@gmail.com>  Mon, 09 Nov 2026 18:40:00 -0600
+
 sm-elite (0.2.10) unstable; urgency=medium
 
   * Ship supermon-ng's node status updater as

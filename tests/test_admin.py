@@ -43,6 +43,16 @@ class AdminToolsTests(unittest.TestCase):
         with self.assertRaises(AdminError):
             self.tools.read("../../etc/shadow")
 
+    def test_smelite_files_are_editable_even_when_missing(self):
+        conf = self.dir / "sm-elite"
+        conf.mkdir()
+        (conf / "asdb.txt").write_text("1999|N0CALL|Hub|Here\n")
+        tools = AdminTools(True, self.dir, self.log, "/nonexistent/helper", smelite_dir=conf)
+        listed = {f["name"]: f["group"] for f in tools.files()}
+        self.assertEqual(listed, {"rpt.conf": "asterisk", "asdb.txt": "sm-elite", "node_info.ini": "sm-elite"})
+        self.assertEqual(tools.read("node_info.ini"), {"name": "node_info.ini", "text": "", "sha256": digest(b"")})
+        self.assertNotIn("asdb.txt", [f["name"] for f in self.tools.files()])
+
     def test_tail_log_returns_last_lines(self):
         text = self.tools.tail_log(20)
         self.assertTrue(text.startswith("line 480\n"))
@@ -120,6 +130,17 @@ class HelperWriteTests(unittest.TestCase):
         for name, bad in (("rpt.conf", "../../etc/shadow"), ("rpt.conf", "20260101-000000"), ("manager.conf", stamp)):
             with self.assertRaises(SystemExit), mock.patch("sys.stderr", io.StringIO()):
                 self.helper.show_backup(name, bad)
+
+    def test_write_creates_a_missing_file(self):
+        target = self.target.with_name("asdb.txt")
+        self.helper.FILES["asdb.txt"] = target
+        stdin = mock.Mock(buffer=io.BytesIO(b"1999|N0CALL|Hub|Here\n"))
+        with mock.patch("sys.stdin", stdin), mock.patch("sys.stdout", io.StringIO()) as out:
+            self.helper.write("asdb.txt", hashlib.sha256(b"").hexdigest())
+        self.assertEqual(out.getvalue().strip(), "none (new file)")
+        self.assertEqual(target.read_text(), "1999|N0CALL|Hub|Here\n")
+        self.assertEqual(target.stat().st_mode & 0o777, 0o644)
+        self.assertFalse(self.helper.BACKUPS.exists())
 
     def test_write_refuses_stale_and_bad_input(self):
         with self.assertRaises(SystemExit) as stale:

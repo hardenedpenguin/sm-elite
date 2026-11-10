@@ -45,7 +45,9 @@ Everything is original code, apart from the node status updater, which comes fro
 - **DVSwitch**: switch a bridged node between DMR, YSF, P25, NXDN, D-STAR, and the other DVSwitch modes, pick a talkgroup from your list or type one, and restart the bridge services.
 - **Keyup alerts**: a chime, an on-page notice, and (over HTTPS) a desktop notification when someone keys up on the nodes you pick.
 - **System**: OS, CPU, memory, disks, temperature, addresses, service status, AllStar packages, and the Asterisk database.
-- **Admin**: reload or restart Asterisk, reboot or power off the server, edit `rpt.conf`, `iax.conf`, and `extensions.conf` with automatic backups, compare and restore backups, and read the Asterisk log.
+- **Schedule**: connect, monitor, or disconnect a link, play a saved announcement, or run a command from `commands.ini` at a set time on chosen days of the week. Handy for linking to a net and dropping it afterwards.
+- **Admin**: reload or restart Asterisk, reboot or power off the server, edit `rpt.conf`, `iax.conf`, `extensions.conf`, and SM-Elite's own `asdb.txt` and `node_info.ini` with automatic backups, compare and restore backups, and read the Asterisk log.
+- **Action log**: admins see who connected, disconnected, announced, scheduled, edited a file, or logged in, when, and from where.
 - **Users**: viewers watch, operators control nodes (optionally limited to certain node numbers), and admins also manage users and the admin tools.
 
 ## Try it
@@ -131,7 +133,7 @@ The dashboard trusts `X-Forwarded-For` and `X-Forwarded-Proto` only from the add
 | `[commands]` | `file` with the command templates for the More commands menu |
 | `[database]` | `url`, `file`, `private` (your own node names, see [Private node names](#private-node-names-asdbtxt)), `refresh_minutes` for the AllStar node directory |
 | `[stats]` | `enabled`, `min_gap_seconds` between AllStar stats requests |
-| `[history]` | `enabled`, `keep_days` for last heard |
+| `[history]` | `enabled`, `keep_days` for last heard, `action_days` for the action log (default 90) |
 | `[admin]` | `enabled`, `config_dir` (`/etc/asterisk`), `log_file`, `helper` |
 | `[sounds]` | `directory`, `voices` (Piper `.onnx` models), `piper`, `sox`, `max_chars` |
 | `[system]` | `services` to show on the System page |
@@ -158,7 +160,7 @@ For example:
 - Lines starting with `;` or `#` are comments. The package installs the file with a commented example.
 - Entries here win over the AllStar directory, so you can also rename a public node.
 - The names appear in node cards, favorites, Find a node, the Who can connect lists, and last heard (from the next keyup on; earlier entries keep the name they were saved with).
-- Edit it as root (`sudo nano /etc/sm-elite/asdb.txt`). SM-Elite reads it again on the next directory refresh (every 15 minutes, `refresh_minutes` in `[database]`), or right away after `sudo systemctl restart sm-elite`.
+- Edit it on the Admin page (Config files, then `asdb.txt`); the names apply as soon as you save, and the previous version is backed up. From a shell, edit it as root (`sudo nano /etc/sm-elite/asdb.txt`); SM-Elite reads it again on the next directory refresh (every 15 minutes, `refresh_minutes` in `[database]`), or right away after `sudo systemctl restart sm-elite`.
 - Coming from Supermon or supermon-ng: `privatenodes.txt` uses the same format, so its lines can be copied in as they are.
 
 ## Node status block
@@ -186,7 +188,7 @@ API_URL = http://127.0.0.1:8100
 - Alerts come from [SkywarnPlus-NG](https://github.com/hardenedpenguin/SkywarnPlus-NG), or CANWarn-NG with `ALERT_PROVIDER = canwarn` and its `[canwarn_ng]` section. The install turns SkywarnPlus-NG alerts on when that package is installed.
 - `TEMP_UNIT` is `F` or `C`.
 
-Changes apply on the next run. To run it now: `sudo systemctl start sm-elite-node-status`. Its output is in `journalctl -u sm-elite-node-status`.
+Edit it on the Admin page (Config files, then `node_info.ini`); saving there runs the updater right away. Changes made from a shell apply on the next run, or run it now with `sudo systemctl start sm-elite-node-status`. Its output is in `journalctl -u sm-elite-node-status`.
 
 While supermon-ng is installed with its own status timer on, SM-Elite's updater skips each run and leaves the job to supermon-ng. After supermon-ng is removed, SM-Elite's copy of its `node_info.ini` takes over.
 
@@ -216,14 +218,31 @@ A DVSwitch button then appears in the control bar for that node. SM-Elite talks 
 
 **Coming from supermon-ng:** when `/etc/supermon-ng/user_files/dvswitch_config.yml` exists, installing or upgrading the package writes `dvswitch.ini` from it: credential profiles become `[network]` sections, and every mode's talkgroups carry over. Each node with `rxchannel = USRP/127.0.0.1:<port>:...` in rpt.conf gets a `[node N]` section pointing at `/tmp/ABInfo_<port>.json` and the DVSwitch.ini next to the matching Analog_Bridge.ini (for example `/etc/dvswitch/2/` for a second bridge). This happens once, and only while `dvswitch.ini` has no `[node N]` section; the previous file is kept as `dvswitch.ini.before-import`. Per-node `dvswitch_config_<node>.yml` lists are not imported.
 
+## Schedule
+
+Operators open **Schedule** in the control bar to add an action that repeats every week: pick the node, the action (connect, monitor, local monitor, disconnect, disconnect all, play a saved sound, or a command from `commands.ini`), the time, and the days. A Tuesday net might be a permanent connect to the net's hub at 19:55 and a disconnect at 21:05.
+
+- Times use the node's own clock and time zone, shown at the top of the dialog.
+- Each action runs with the permissions of the user who added it at the moment it runs. Removing that user, or limiting them to other nodes, stops their scheduled actions; the last run column then says why it was skipped.
+- Operators see and manage the scheduled actions on the nodes they may control; admins see all of them.
+- Pause keeps an action without running it, and Run now runs it once straight away.
+- An action whose time passes while SM-Elite is stopped is skipped; it runs again at its next time.
+- Every run is in the action log, with its result.
+
+## Action log
+
+Admins find it under **System**, then **Action log**. It lists each control action (connect, disconnect, DTMF, commands), announcement, allow and deny list change, DVSwitch change, favorite added or removed, scheduled action added, run, paused, or removed, config file save or restore, Asterisk restart, reboot, user added or removed, and login. Each entry has the user, node, target, a short detail, and the address it came from. Passwords and file contents are never stored. A failed login with an unknown username is recorded without the name, since that is often a password typed into the wrong box.
+
+Entries are kept for 90 days (`action_days` in `[history]`) in `/var/lib/sm-elite/actions.db`.
+
 ## Admin tools and root access
 
 The dashboard runs as an ordinary account. Anything that needs root goes through one small script, `/usr/lib/sm-elite/smelite-admin`, which that account may run with `sudo` and nothing else. The helper:
 
-- writes only `rpt.conf`, `iax.conf`, and `extensions.conf`, and only when the file still matches the version the editor loaded
+- writes only `rpt.conf`, `iax.conf`, `extensions.conf`, `/etc/sm-elite/asdb.txt`, and `/etc/sm-elite/node_info.ini`, and only when the file still matches the version the editor loaded
 - keeps the last 20 versions of each file in `/var/backups/smelite` (mode 600)
 - saves and deletes announcements in the Asterisk sounds folder
-- restarts the DVSwitch bridge services, and no other services
+- restarts the DVSwitch bridge services and starts the node status updater, and no other services
 - schedules reboot and power off five seconds out, so the page can answer first
 
 Every change made from the Admin page asks for the admin's password again.
@@ -235,7 +254,7 @@ Every change made from the Admin page asks for the admin's password again.
 - `config/` demo config and examples
 - `debian/` Debian packaging
 - `deploy/` package build script, config generator, Apache snippet, root helper, node status updater
-- `data/` SQLite users, sessions, last heard, and the node directory cache for the demo
+- `data/` SQLite users, sessions, last heard, the action log, scheduled actions, and the node directory cache for the demo
 - `images/` screenshots for this README
 
 Node snapshots, last heard, and the favorites scan arrive on `/ws`. Commands are `POST /api/command` and stay off the socket.

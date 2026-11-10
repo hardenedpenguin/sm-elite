@@ -106,6 +106,17 @@ class AccessListTests(unittest.TestCase):
         self.assertEqual([row["node"] for row in lists["denylist"]], ["2001", "12345"])
 
 
+class NodeOrderTests(unittest.TestCase):
+    def test_public_nodes_first_then_private_each_numeric(self):
+        from smelite.config import node_order
+
+        nodes = ["1999", "546056", "1001", "2000", "546051", "27339", "local", "1998"]
+        self.assertEqual(
+            sorted(nodes, key=node_order),
+            ["2000", "27339", "546051", "546056", "1001", "1998", "1999", "local"],
+        )
+
+
 class DirectorySearchTests(unittest.TestCase):
     def test_ranks_exact_then_prefix_and_needs_every_word(self):
         from smelite.astdb import search_directory

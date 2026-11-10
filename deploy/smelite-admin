@@ -12,6 +12,7 @@ only this path in sudoers. It accepts a fixed set of actions and file names.
     smelite-admin sound-save <name>     (8 kHz mu-law audio on stdin)
     smelite-admin sound-delete <name>
     smelite-admin bridge-restart        (DVSwitch mmdvm_bridge* and analog_bridge* units)
+    smelite-admin node-status           (run sm-elite-node-status.service now)
 """
 
 import hashlib
@@ -27,6 +28,8 @@ FILES = {
     "rpt.conf": Path("/etc/asterisk/rpt.conf"),
     "iax.conf": Path("/etc/asterisk/iax.conf"),
     "extensions.conf": Path("/etc/asterisk/extensions.conf"),
+    "asdb.txt": Path("/etc/sm-elite/asdb.txt"),
+    "node_info.ini": Path("/etc/sm-elite/node_info.ini"),
 }
 BACKUPS = Path("/var/backups/smelite")
 KEEP_BACKUPS = 20
@@ -85,28 +88,32 @@ def replace(name: str, expected: str, data: bytes) -> None:
         data.decode("utf-8")
     except UnicodeDecodeError:
         fail("file is not valid UTF-8")
-    current = target.read_bytes()
+    exists = target.is_file()
+    current = target.read_bytes() if exists else b""
     if hashlib.sha256(current).hexdigest() != expected:
         fail("the file changed since it was loaded; reload it and try again", 3)
 
-    BACKUPS.mkdir(mode=0o700, parents=True, exist_ok=True)
-    now = time.time()
-    stamp = time.strftime("%Y%m%d-%H%M%S", time.gmtime(now)) + f".{int(now * 1000) % 1000:03d}"
-    backup = BACKUPS / f"{name}.{stamp}"
-    backup.write_bytes(current)
-    os.chmod(backup, 0o600)
-    for old in sorted(BACKUPS.glob(f"{name}.*"))[:-KEEP_BACKUPS]:
-        old.unlink()
+    backup = "none (new file)"
+    if exists:
+        BACKUPS.mkdir(mode=0o700, parents=True, exist_ok=True)
+        now = time.time()
+        stamp = time.strftime("%Y%m%d-%H%M%S", time.gmtime(now)) + f".{int(now * 1000) % 1000:03d}"
+        backup = BACKUPS / f"{name}.{stamp}"
+        backup.write_bytes(current)
+        os.chmod(backup, 0o600)
+        for old in sorted(BACKUPS.glob(f"{name}.*"))[:-KEEP_BACKUPS]:
+            old.unlink()
 
-    info = target.stat()
+    info = target.stat() if exists else None
     fd, temp = tempfile.mkstemp(prefix=f".{name}.", dir=target.parent)
     try:
         with os.fdopen(fd, "wb") as handle:
             handle.write(data)
             handle.flush()
             os.fsync(handle.fileno())
-        os.chown(temp, info.st_uid, info.st_gid)
-        os.chmod(temp, info.st_mode & 0o7777)
+        if info is not None:
+            os.chown(temp, info.st_uid, info.st_gid)
+        os.chmod(temp, info.st_mode & 0o7777 if info is not None else 0o644)
         os.replace(temp, target)
     except BaseException:
         if os.path.exists(temp):
@@ -172,6 +179,16 @@ def bridge_restart() -> None:
     print(f"restarted {', '.join(done)}")
 
 
+def node_status() -> None:
+    result = subprocess.run(
+        ["/usr/bin/systemctl", "start", "--no-block", "sm-elite-node-status.service"],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        fail(result.stderr.strip() or "could not start sm-elite-node-status.service")
+    print("node status update started")
+
+
 def power(verb: str) -> None:
     subprocess.run(
         ["/usr/bin/systemd-run", "--on-active=5s", "--unit", f"smelite-{verb}", "/usr/bin/systemctl", verb],
@@ -192,6 +209,8 @@ def main(argv: list[str]) -> None:
         power(argv[0])
     elif argv == ["bridge-restart"]:
         bridge_restart()
+    elif argv == ["node-status"]:
+        node_status()
     elif len(argv) == 2 and argv[0] == "backups":
         list_backups(argv[1])
     elif len(argv) == 3 and argv[0] == "backup-show":
@@ -205,7 +224,7 @@ def main(argv: list[str]) -> None:
     else:
         fail("usage: smelite-admin check | write <name> <sha256> | reboot | poweroff"
              " | backups <name> | backup-show <name> <stamp> | restore <name> <stamp> <sha256>"
-             " | sound-save <name> | sound-delete <name> | bridge-restart", 2)
+             " | sound-save <name> | sound-delete <name> | bridge-restart | node-status", 2)
 
 
 if __name__ == "__main__":

@@ -7,23 +7,34 @@ import json
 import logging
 import shutil
 import time
+from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse
 
 from aiohttp import WSCloseCode, WSMsgType, web
 
-from .admin import ASTERISK_ACTIONS, POWER_ACTIONS
+from .admin import ASTERISK_ACTIONS, POWER_ACTIONS, AdminError
 from .ami import AmiError
 from .astdb import search_directory
 from .auth import setup_code, setup_code_matches
 from .commands import NODE_RE, CommandError, action_command, check_command
+from .config import node_order
 from .favorites import Favorite, add_favorite, list_files, load_file, remove_favorite, save_file
 from .monitor import Engine
+from .schedule import ACTIONS as SCHEDULE_ACTIONS, Job, validate
 from . import sysinfo
 from .sounds import SCOPES
 
 log = logging.getLogger("smelite")
 
+SCOPE_LABELS = {"local": "this node only", "links": "node and links"}
+ADMIN_ACTION_LABELS = {
+    "reload": "reload Asterisk",
+    "rpt_restart": "restart app_rpt",
+    "asterisk_restart": "restart Asterisk",
+    "reboot": "reboot server",
+    "poweroff": "shut down server",
+}
 COOKIE = "smelite"
 SECURE_COOKIE = "__Secure-smelite"
 WEB = Path(__file__).resolve().parent.parent / "web"
@@ -44,6 +55,7 @@ def create_app(engine: Engine) -> web.Application:
     app.router.add_get("/api/users", users_list)
     app.router.add_post("/api/users", users_create)
     app.router.add_delete("/api/users/{name}", users_delete)
+    app.router.add_get("/api/actions", actions_list)
     app.router.add_get("/api/favorites", favorites_get)
     app.router.add_post("/api/favorites", favorites_add)
     app.router.add_delete("/api/favorites", favorites_delete)
@@ -71,6 +83,11 @@ def create_app(engine: Engine) -> web.Application:
     app.router.add_post("/api/dvswitch/restart", dvswitch_restart)
     app.router.add_get("/api/system", system_info)
     app.router.add_get("/api/system/database", system_database)
+    app.router.add_get("/api/schedule", schedule_get)
+    app.router.add_post("/api/schedule", schedule_add)
+    app.router.add_post("/api/schedule/{id}", schedule_update)
+    app.router.add_delete("/api/schedule/{id}", schedule_delete)
+    app.router.add_post("/api/schedule/{id}/run", schedule_run)
     app.router.add_get("/api/commands", commands_list)
     app.router.add_post("/api/command", command)
     app.router.add_get("/ws", websocket)
@@ -215,6 +232,7 @@ async def bootstrap(request: web.Request) -> web.Response:
         })
         for extra in node.extras:
             nodes.append({"id": extra, "system": node.system, "label": "", "voters": [], "extras": []})
+    nodes.sort(key=lambda item: node_order(item["id"]))
     return web.json_response({
         "title": settings.title,
         "callsign": settings.callsign,
@@ -230,7 +248,10 @@ async def bootstrap(request: web.Request) -> web.Response:
         "dvswitch": [node for node in engine.dvswitch.nodes() if node in settings.monitored_ids()],
         "user": _user_payload(request["user"]),
         "nodes": nodes,
-        "groups": [{"name": group.name, "nodes": group.nodes, "system": group.system} for group in settings.groups],
+        "groups": [
+            {"name": group.name, "nodes": sorted(group.nodes, key=node_order), "system": group.system}
+            for group in settings.groups
+        ],
         "favorites": files,
         "commands": [{"label": item.label, "command": item.command} for item in settings.commands],
     })
@@ -301,6 +322,7 @@ async def setup(request: web.Request) -> web.Response:
     engine.auth.create_user(name, password, "admin")
     _setup_code_path(engine).unlink(missing_ok=True)
     log.warning("setup: created admin account %s", name)
+    _log(request, "create admin account", user=name)
     user = engine.auth.verify(name, password)
     token = engine.auth.create_session(user)
     response = web.json_response({"user": _user_payload(user)})
@@ -316,12 +338,17 @@ async def login(request: web.Request) -> web.Response:
     if len(recent) >= 8:
         return web.json_response({"error": "too many login attempts"}, status=429)
     body = await _json(request)
-    user = engine.auth.verify(str(body.get("username") or "").strip(), str(body.get("password") or ""))
+    name = str(body.get("username") or "").strip()
+    user = engine.auth.verify(name, str(body.get("password") or ""))
     if user is None:
         recent.append(now)
         engine.login_failures[peer] = recent
+        # An unknown name may be a password typed into the wrong box, so it is not kept.
+        known = engine.auth.get_user(name) is not None
+        _log(request, "login failed", user=name if known else "", detail="" if known else "unknown username")
         return web.json_response({"error": "login failed"}, status=401)
     engine.login_failures.pop(peer, None)
+    _log(request, "log in", user=user.name)
     token = engine.auth.create_session(user)
     response = web.json_response({"user": _user_payload(user)})
     _set_cookie(response, request, token)
@@ -330,10 +357,18 @@ async def login(request: web.Request) -> web.Response:
 
 async def logout(request: web.Request) -> web.Response:
     engine: Engine = request.app["engine"]
+    if request["user"] is not None:
+        _log(request, "log out")
     engine.auth.drop_session(request["token"])
     response = web.json_response({"ok": True})
     response.del_cookie(_cookie_name(request), path="/", secure=request.secure)
     return response
+
+
+def _log(request: web.Request, action: str, *, user: str | None = None, **fields: str) -> None:
+    if user is None:
+        user = request["user"].name if request["user"] is not None else ""
+    request.app["engine"].record(user, action, peer=request.remote or "", **fields)
 
 
 def _require(request: web.Request, role: str):
@@ -341,6 +376,20 @@ def _require(request: web.Request, role: str):
     if user is None or not user.allows(role):
         return None
     return user
+
+
+async def actions_list(request: web.Request) -> web.Response:
+    if _require(request, "admin") is None:
+        return web.json_response({"error": "admin required"}, status=401)
+    engine: Engine = request.app["engine"]
+    if engine.actions is None:
+        return web.json_response({"items": [], "keep_days": 0})
+    try:
+        limit = int(request.query.get("limit", "200"))
+        before = float(request.query["before"]) if request.query.get("before") else None
+    except ValueError as exc:
+        raise ValueError("limit and before must be numbers") from exc
+    return web.json_response({"items": engine.actions.recent(limit, before), "keep_days": engine.actions.keep_days})
 
 
 async def users_list(request: web.Request) -> web.Response:
@@ -356,12 +405,10 @@ async def users_create(request: web.Request) -> web.Response:
     nodes = body.get("nodes")
     if isinstance(nodes, str):
         nodes = [part.strip() for part in nodes.split(",") if part.strip()]
-    request.app["engine"].auth.create_user(
-        str(body.get("username") or "").strip(),
-        str(body.get("password") or ""),
-        str(body.get("role") or "operator"),
-        nodes or None,
-    )
+    name = str(body.get("username") or "").strip()
+    role = str(body.get("role") or "operator")
+    request.app["engine"].auth.create_user(name, str(body.get("password") or ""), role, nodes or None)
+    _log(request, "add user", target=name, detail=f"{role}, {'nodes ' + ', '.join(map(str, nodes)) if nodes else 'all nodes'}")
     return web.json_response({"ok": True})
 
 
@@ -376,6 +423,7 @@ async def users_delete(request: web.Request) -> web.Response:
     if len(admins) == 1 and admins[0]["name"] == name:
         return web.json_response({"error": "the last admin cannot be removed"}, status=400)
     engine.auth.delete_user(name)
+    _log(request, "remove user", target=name)
     return web.json_response({"ok": True})
 
 
@@ -420,11 +468,13 @@ async def favorites_add(request: web.Request) -> web.Response:
         items = load_file(engine.settings.favorites_dir, name)
     except FileNotFoundError:
         items = []
-    items = add_favorite(items, str(body.get("node") or "").strip(), str(body.get("label") or ""))
+    node = str(body.get("node") or "").strip()
+    items = add_favorite(items, node, str(body.get("label") or ""))
     try:
         save_file(engine.settings.favorites_dir, name, items)
     except OSError as exc:
         return web.json_response({"error": f"could not save {name}: {exc.strerror or exc}"}, status=500)
+    _log(request, "add favorite", target=node, detail=name)
     return web.json_response({"ok": True})
 
 
@@ -438,8 +488,10 @@ async def favorites_delete(request: web.Request) -> web.Response:
         items = load_file(engine.settings.favorites_dir, name)
     except FileNotFoundError:
         return web.json_response({"error": "favorites file was not found"}, status=404)
-    items = remove_favorite(items, str(body.get("node") or "").strip())
+    node = str(body.get("node") or "").strip()
+    items = remove_favorite(items, node)
     save_file(engine.settings.favorites_dir, name, items)
+    _log(request, "remove favorite", target=node, detail=name)
     return web.json_response({"ok": True})
 
 
@@ -520,12 +572,16 @@ async def access_post(request: web.Request) -> web.Response:
     add = str(body.get("action") or "add") == "add"
     if add and remote == local:
         raise ValueError("a node cannot be listed against itself")
-    await engine.access_change(local, which, remote, str(body.get("comment") or ""), add)
+    comment = str(body.get("comment") or "")
+    await engine.access_change(local, which, remote, comment, add)
+    list_name = "deny list" if which.startswith("deny") else "allow list"
+    _log(request, f"{list_name} {'add' if add else 'remove'}", node=local, target=remote, detail=comment if add else "")
     detail = ""
     if add and which.startswith("deny") and body.get("disconnect"):
         linked = {str(conn.get("node")) for conn in (engine.hub.snapshots.get(local) or {}).get("conns", [])}
         if remote in linked:
             detail = await engine.run_command(action_command("disconnect", local, remote), local)
+            _log(request, "disconnect", node=local, target=remote, detail="denied while linked")
     lists = await engine.access_lists(local)
     return web.json_response({"node": local, "allow": lists["allowlist"], "deny": lists["denylist"], "detail": detail})
 
@@ -552,8 +608,10 @@ async def sounds_speak(request: web.Request) -> web.Response:
     scope = str(body.get("scope") or "local")
     if scope not in SCOPES:
         raise ValueError("pick where to play it")
-    path, seconds = await engine.sounds.speak(str(body.get("text") or ""), str(body.get("voice") or ""))
+    text = str(body.get("text") or "")
+    path, seconds = await engine.sounds.speak(text, str(body.get("voice") or ""))
     await engine.play_sound(local, path, scope, user.name)
+    _log(request, "speak", node=local, target=SCOPE_LABELS.get(scope, scope), detail=text)
     return web.json_response({"ok": True, "seconds": seconds})
 
 
@@ -562,8 +620,11 @@ async def sounds_play(request: web.Request) -> web.Response:
     body = await _json(request)
     local = str(body.get("node") or "").strip()
     user = _access_node(request, local, "operator")
-    path = engine.sounds.resolve(str(body.get("name") or ""))
-    await engine.play_sound(local, path, str(body.get("scope") or "local"), user.name)
+    name = str(body.get("name") or "")
+    scope = str(body.get("scope") or "local")
+    path = engine.sounds.resolve(name)
+    await engine.play_sound(local, path, scope, user.name)
+    _log(request, "play sound", node=local, target=SCOPE_LABELS.get(scope, scope), detail=name)
     return web.json_response({"ok": True})
 
 
@@ -576,6 +637,7 @@ async def sounds_save(request: web.Request) -> web.Response:
         str(body.get("name") or "").strip(), str(body.get("text") or ""), str(body.get("voice") or ""),
     )
     log.warning("sound: %s saved %s", request["user"].name, entry["name"])
+    _log(request, "save sound", target=entry["name"], detail=str(body.get("text") or ""))
     return web.json_response({"saved": entry, "library": engine.sounds.library()})
 
 
@@ -587,6 +649,7 @@ async def sounds_delete(request: web.Request) -> web.Response:
     name = str(body.get("name") or "")
     await engine.sounds.delete(name)
     log.warning("sound: %s deleted %s", request["user"].name, name)
+    _log(request, "delete sound", target=name)
     return web.json_response({"library": engine.sounds.library()})
 
 
@@ -604,7 +667,9 @@ async def dvswitch_mode(request: web.Request) -> web.Response:
     body = await _json(request)
     local = str(body.get("node") or "").strip()
     user = _access_node(request, local, "operator")
-    status = await engine.dvswitch.set_mode(local, str(body.get("mode") or ""), user.name)
+    mode = str(body.get("mode") or "")
+    status = await engine.dvswitch.set_mode(local, mode, user.name)
+    _log(request, "dvswitch mode", node=local, target=mode)
     return web.json_response({"status": status})
 
 
@@ -616,9 +681,9 @@ async def dvswitch_tune(request: web.Request) -> web.Response:
     index = body.get("id")
     if index is not None and (isinstance(index, bool) or not isinstance(index, int)):
         raise ValueError("pick a talkgroup from the list")
-    status = await engine.dvswitch.tune(
-        local, str(body.get("mode") or ""), user.name, index=index, custom=str(body.get("custom") or ""),
-    )
+    mode = str(body.get("mode") or "")
+    status = await engine.dvswitch.tune(local, mode, user.name, index=index, custom=str(body.get("custom") or ""))
+    _log(request, "dvswitch tune", node=local, target=str(status.get("tune") or body.get("custom") or ""), detail=mode)
     return web.json_response({"status": status})
 
 
@@ -634,6 +699,7 @@ async def dvswitch_restart(request: web.Request) -> web.Response:
         detail = "demo: bridge restart skipped"
     else:
         detail = await engine.admin.run_helper(["bridge-restart"])
+    _log(request, "dvswitch restart", node=local, detail=detail)
     return web.json_response({"detail": detail})
 
 
@@ -726,7 +792,23 @@ async def admin_file_save(request: web.Request) -> web.Response:
     _confirm_password(request, user, body)
     name = str(body.get("name") or "")
     backup = await engine.admin.write(name, str(body.get("text") or ""), str(body.get("sha256") or ""), user.name)
-    return web.json_response({**engine.admin.read(name), "backup": backup})
+    _log(request, "save file", target=name, detail=f"backup {backup}")
+    return web.json_response({**engine.admin.read(name), "backup": backup, "applied": await _apply_file(engine, name)})
+
+
+async def _apply_file(engine: Engine, name: str) -> str:
+    """Put an SM-Elite file into effect; the Asterisk files wait for a reload."""
+    if name == "asdb.txt":
+        if not engine.settings.demo:
+            engine.directory.load_files()
+        return "Node names are updated."
+    if name == "node_info.ini":
+        try:
+            await engine.admin.node_status()
+        except AdminError as exc:
+            return f"The status block will update on the next timer run ({exc})."
+        return "The status block updates in a few seconds."
+    return ""
 
 
 async def admin_backups(request: web.Request) -> web.Response:
@@ -748,8 +830,15 @@ async def admin_restore(request: web.Request) -> web.Response:
     body = await _json(request)
     _confirm_password(request, user, body)
     name = str(body.get("name") or "")
-    backup = await engine.admin.restore(name, str(body.get("stamp") or ""), str(body.get("sha256") or ""), user.name)
-    return web.json_response({**engine.admin.read(name), "backup": backup, "backups": await engine.admin.backups(name)})
+    stamp = str(body.get("stamp") or "")
+    backup = await engine.admin.restore(name, stamp, str(body.get("sha256") or ""), user.name)
+    _log(request, "restore file", target=name, detail=f"from backup {stamp}")
+    return web.json_response({
+        **engine.admin.read(name),
+        "backup": backup,
+        "backups": await engine.admin.backups(name),
+        "applied": await _apply_file(engine, name),
+    })
 
 
 async def admin_log(request: web.Request) -> web.Response:
@@ -769,15 +858,116 @@ async def admin_action(request: web.Request) -> web.Response:
     _confirm_password(request, user, body)
     action = str(body.get("action") or "")
     if action in POWER_ACTIONS:
+        _log(request, ADMIN_ACTION_LABELS[action])
         detail = await engine.admin.power(action, user.name)
     elif action in ASTERISK_ACTIONS:
         local = str(body.get("node") or "").strip() or (engine.settings.monitored_ids() or [""])[0]
         if engine.settings.node_by_id(local) is None:
             raise ValueError("pick a configured node")
         detail = await engine.asterisk_action(action, local, user.name)
+        _log(request, ADMIN_ACTION_LABELS[action], node=local)
     else:
         raise ValueError("unknown admin action")
     return web.json_response({"ok": True, "detail": detail})
+
+
+def _schedule(engine: Engine):
+    if engine.schedule is None:
+        raise web.HTTPServiceUnavailable(text=json.dumps({"error": "scheduling is not available"}), content_type="application/json")
+    return engine.schedule
+
+
+async def schedule_get(request: web.Request) -> web.Response:
+    engine: Engine = request.app["engine"]
+    user = _require(request, "operator")
+    if user is None:
+        raise web.HTTPUnauthorized(text=json.dumps({"error": "operator required"}), content_type="application/json")
+    nodes = sorted((node for node in engine.settings.monitored_ids() if user.can_command(node)), key=node_order)
+    now = datetime.now().astimezone()
+    return web.json_response({
+        "jobs": [job.as_dict() for job in _schedule(engine).jobs() if job.node in nodes or user.allows("admin")],
+        "nodes": nodes,
+        "actions": [{"id": key, "label": label} for key, label in SCHEDULE_ACTIONS.items()],
+        "commands": [{"label": item.label, "command": item.command} for item in engine.settings.commands],
+        "sounds": [entry["name"] for entry in engine.sounds.library()],
+        "timezone": now.tzname() or "",
+        "now": now.strftime("%H:%M"),
+        "weekday": now.weekday(),
+    })
+
+
+async def schedule_add(request: web.Request) -> web.Response:
+    engine: Engine = request.app["engine"]
+    store = _schedule(engine)
+    body = await _json(request)
+    node = str(body.get("node") or "").strip()
+    user = _access_node(request, node, "operator")
+    days = body.get("days")
+    job = Job(
+        node=node,
+        action=str(body.get("action") or ""),
+        at=str(body.get("at") or "").strip(),
+        days=days if isinstance(days, list) else [],
+        owner=user.name,
+        target=str(body.get("target") or ""),
+        permanent=bool(body.get("permanent")),
+        sound=str(body.get("sound") or ""),
+        scope=str(body.get("scope") or "local"),
+        template=str(body.get("template") or ""),
+        note=str(body.get("note") or ""),
+    )
+    validate(
+        job,
+        nodes=engine.settings.monitored_ids(),
+        commands={item.command for item in engine.settings.commands},
+        sounds={entry["name"] for entry in engine.sounds.library()},
+    )
+    store.add(job)
+    _log(request, "add schedule", node=node, target=job.target or job.sound or job.template,
+         detail=f"{job.as_dict()['days_label']} {job.at} {SCHEDULE_ACTIONS[job.action].lower()}")
+    return web.json_response({"job": job.as_dict()})
+
+
+def _schedule_job(request: web.Request):
+    engine: Engine = request.app["engine"]
+    try:
+        job_id = int(request.match_info["id"])
+    except ValueError as exc:
+        raise ValueError("unknown scheduled action") from exc
+    job = _schedule(engine).get(job_id)
+    if job is None:
+        raise web.HTTPNotFound(text=json.dumps({"error": "that scheduled action is gone"}), content_type="application/json")
+    user = _require(request, "operator")
+    if user is None or not user.allows("admin"):
+        _access_node(request, job.node, "operator")
+    return job
+
+
+async def schedule_update(request: web.Request) -> web.Response:
+    engine: Engine = request.app["engine"]
+    job = _schedule_job(request)
+    body = await _json(request)
+    enabled = bool(body.get("enabled"))
+    engine.schedule.set_enabled(job.id, enabled)
+    _log(request, "resume schedule" if enabled else "pause schedule", node=job.node, target=f"#{job.id}",
+         detail=f"{job.as_dict()['days_label']} {job.at}")
+    return web.json_response({"job": engine.schedule.get(job.id).as_dict()})
+
+
+async def schedule_delete(request: web.Request) -> web.Response:
+    engine: Engine = request.app["engine"]
+    job = _schedule_job(request)
+    engine.schedule.delete(job.id)
+    _log(request, "remove schedule", node=job.node, target=f"#{job.id}",
+         detail=f"{job.as_dict()['days_label']} {job.at} {SCHEDULE_ACTIONS.get(job.action, job.action).lower()}")
+    return web.json_response({"ok": True})
+
+
+async def schedule_run(request: web.Request) -> web.Response:
+    engine: Engine = request.app["engine"]
+    job = _schedule_job(request)
+    result = await engine.run_scheduled(job, by=request["user"].name, peer=request.remote or "")
+    return web.json_response({"result": result, "job": engine.schedule.get(job.id).as_dict()})
 
 
 async def commands_list(request: web.Request) -> web.Response:
@@ -802,12 +992,6 @@ async def command(request: web.Request) -> web.Response:
         configured = {item.command for item in engine.settings.commands}
         if str(body.get("template") or "") not in configured:
             return web.json_response({"error": "that command is not in commands.ini"}, status=403)
-    if body.get("disconnect_first") and action in {"connect", "monitor", "local_monitor"}:
-        current = engine.hub.snapshots.get(local) or {}
-        if current.get("conns"):
-            drop = action_command("disconnect_all", local)
-            await engine.run_command(drop, local)
-            await asyncio_sleep()
     built = action_command(
         action,
         local,
@@ -817,7 +1001,17 @@ async def command(request: web.Request) -> web.Response:
         template=str(body.get("template") or "") or None,
     )
     check_command(built)
+    if body.get("disconnect_first") and action in {"connect", "monitor", "local_monitor"}:
+        current = engine.hub.snapshots.get(local) or {}
+        if current.get("conns"):
+            drop = action_command("disconnect_all", local)
+            await engine.run_command(drop, local)
+            _log(request, "disconnect all", node=local, detail=f"before {action.replace('_', ' ')} {target}")
+            await asyncio_sleep()
     detail = await engine.run_command(built, local)
+    label = "command" if action == "custom" else action.replace("_", " ")
+    extra = "permanent" if body.get("permanent") and action in {"connect", "monitor", "local_monitor"} else ""
+    _log(request, label, node=local, target=target or "", detail=" · ".join(filter(None, [extra, built])))
     return web.json_response({"ok": True, "command": built, "detail": detail[:4000]})
 
 

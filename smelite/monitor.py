@@ -10,12 +10,17 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import sqlite3
 import time
+from datetime import datetime
 from typing import Any
 
 import aiohttp
 
 from . import access, demo
+from .actions import ActionLog
+from .commands import action_command, check_command
+from .schedule import ACTIONS, Job, ScheduleStore, due_minutes
 from .admin import ASTERISK_ACTIONS, AdminTools
 from .dvswitch import DVSwitch
 from .sounds import SCOPES, Sounds
@@ -143,11 +148,15 @@ class Engine:
         auth: AuthStore,
         directory: NodeDirectory,
         history: HistoryStore | None = None,
+        actions: ActionLog | None = None,
+        schedule: ScheduleStore | None = None,
     ):
         self.settings = settings
         self.auth = auth
         self.directory = directory
         self.history = history
+        self.actions = actions
+        self.schedule = schedule
         self.keys = KeyTracker()
         self._pruned_at = 0.0
         self.admin = AdminTools(
@@ -156,6 +165,7 @@ class Engine:
             settings.admin_log_file,
             settings.admin_helper,
             demo=settings.demo,
+            smelite_dir=settings.config_dir,
         )
         self.sounds = Sounds(settings, self.admin.run_helper, demo=settings.demo)
         self.dvswitch = DVSwitch(settings.dvswitch_file, demo=settings.demo)
@@ -194,6 +204,7 @@ class Engine:
             asyncio.create_task(self._poll_loop(), name="poll"),
             asyncio.create_task(self._stats_loop(), name="stats"),
             asyncio.create_task(self._directory_loop(), name="directory"),
+            asyncio.create_task(self._schedule_loop(), name="schedule"),
         ]
 
     async def close(self) -> None:
@@ -206,6 +217,18 @@ class Engine:
             await self.http.close()
         if self.history is not None:
             self.history.close()
+        if self.actions is not None:
+            self.actions.close()
+        if self.schedule is not None:
+            self.schedule.close()
+
+    def record(self, user: str, action: str, **fields: str) -> None:
+        if self.actions is None:
+            return
+        try:
+            self.actions.add(user, action, **fields)
+        except sqlite3.Error as exc:
+            log.warning("action log: could not record %s: %s", action, exc)
 
     def _recording(self) -> bool:
         return self.history is not None and self.settings.history_enabled
@@ -413,6 +436,63 @@ class Engine:
                 except (aiohttp.ClientError, OSError) as exc:
                     log.warning("node directory refresh failed: %s", exc)
             await asyncio.sleep(30)
+
+    async def _schedule_loop(self) -> None:
+        last = datetime.now()
+        while not self.stop.is_set():
+            await asyncio.sleep(10)
+            now = datetime.now()
+            minutes = due_minutes(last, now) if now >= last else []
+            last = now
+            if self.schedule is None or not minutes:
+                continue
+            for moment in minutes:
+                for job in self.schedule.jobs():
+                    if not job.runs_at(moment):
+                        continue
+                    try:
+                        await self.run_scheduled(job)
+                    except Exception:
+                        log.exception("schedule: job %s failed", job.id)
+
+    async def run_scheduled(self, job: Job, *, by: str = "", peer: str = "schedule") -> str:
+        """Run one job as its owner, store the result, and log it."""
+        result = await self._run_job(job)
+        self.schedule.finished(job.id, time.time(), result)
+        what = job.target or job.sound or job.template
+        log.info("schedule: job %s (%s %s on %s) %s", job.id, job.action, what, job.node, result)
+        self.record(
+            by or job.owner,
+            f"scheduled {ACTIONS.get(job.action, job.action).lower()}",
+            node=job.node,
+            target=what,
+            detail=" · ".join(filter(None, [job.note, result])),
+            peer=peer,
+        )
+        return result
+
+    async def _run_job(self, job: Job) -> str:
+        owner = self.auth.get_user(job.owner)
+        if owner is None:
+            return f"skipped: the account {job.owner} was removed"
+        if job.node not in self.settings.monitored_ids() or not owner.can_command(job.node):
+            return f"skipped: {job.owner} may not control {job.node}"
+        try:
+            if job.action == "play":
+                await self.play_sound(job.node, self.sounds.resolve(job.sound), job.scope, job.owner)
+                return f"played {job.sound}"
+            if job.action == "command":
+                if job.template not in {item.command for item in self.settings.commands}:
+                    return "skipped: that command is no longer in commands.ini"
+                built = action_command("custom", job.node, job.target or None, template=job.template)
+            else:
+                built = action_command(job.action, job.node, job.target or None, permanent=job.permanent)
+            check_command(built)
+            output = await self.run_command(built, job.node)
+        except (AmiError, ValueError) as exc:
+            return f"failed: {exc}"
+        first = output.strip().splitlines()[0] if output.strip() else "OK"
+        return "failed: " + first[7:] if first.startswith("Error: ") else f"ran {built} ({first})"
 
     async def access_lists(self, local: str) -> dict:
         if self.settings.demo:
