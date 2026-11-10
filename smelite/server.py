@@ -38,6 +38,11 @@ ADMIN_ACTION_LABELS = {
 COOKIE = "smelite"
 SECURE_COOKIE = "__Secure-smelite"
 WEB = Path(__file__).resolve().parent.parent / "web"
+ICONS = {
+    "favicon.svg": "image/svg+xml",
+    "favicon.ico": "image/x-icon",
+    "apple-touch-icon.png": "image/png",
+}
 
 
 def create_app(engine: Engine) -> web.Application:
@@ -91,6 +96,8 @@ def create_app(engine: Engine) -> web.Application:
     app.router.add_get("/api/commands", commands_list)
     app.router.add_post("/api/command", command)
     app.router.add_get("/ws", websocket)
+    for name in ICONS:
+        app.router.add_get(f"/{name}", icon)
     if (WEB / "css").is_dir():
         app.router.add_static("/css", WEB / "css")
         app.router.add_static("/js", WEB / "js")
@@ -188,6 +195,14 @@ async def guard(request: web.Request, handler):
         return web.json_response({"error": str(exc)}, status=400)
     except AmiError as exc:
         return web.json_response({"error": f"Asterisk did not accept the request: {exc}"}, status=502)
+
+
+async def icon(request: web.Request) -> web.StreamResponse:
+    name = request.path.rsplit("/", 1)[-1]
+    path = WEB / name
+    if name not in ICONS or not path.is_file():
+        raise web.HTTPNotFound()
+    return web.FileResponse(path, headers={"Content-Type": ICONS[name], "Cache-Control": "public, max-age=86400"})
 
 
 def _asset_version() -> str:
