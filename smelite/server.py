@@ -15,7 +15,7 @@ from urllib.parse import urlparse
 
 from aiohttp import BodyPartReader, WSCloseCode, WSMsgType, web
 
-from . import __version__, backup
+from . import __version__, backup, themes
 from .admin import ASTERISK_ACTIONS, POWER_ACTIONS, AdminError
 from .ami import AmiError
 from .astdb import search_directory
@@ -65,6 +65,7 @@ def create_app(engine: Engine) -> web.Application:
     app.router.add_post("/api/users/{name}", users_update)
     app.router.add_delete("/api/users/{name}", users_delete)
     app.router.add_post("/api/account/password", account_password)
+    app.router.add_post("/api/site/theme", site_theme_set)
     app.router.add_get("/api/actions", actions_list)
     app.router.add_get("/api/favorites", favorites_get)
     app.router.add_post("/api/favorites", favorites_add)
@@ -214,8 +215,11 @@ async def icon(request: web.Request) -> web.StreamResponse:
     return web.FileResponse(path, headers={"Content-Type": ICONS[name], "Cache-Control": "public, max-age=86400"})
 
 
+ASSETS = ("js/theme.js", "js/app.js", "css/app.css")
+
+
 def _asset_version() -> str:
-    stamps = [path.stat().st_mtime_ns for path in (WEB / "js" / "app.js", WEB / "css" / "app.css") if path.is_file()]
+    stamps = [(WEB / name).stat().st_mtime_ns for name in ASSETS if (WEB / name).is_file()]
     return format(max(stamps, default=0), "x")
 
 
@@ -225,7 +229,8 @@ def index(_request: web.Request) -> web.Response:
         return web.Response(text="dashboard files are missing", status=500)
     version = _asset_version()
     html = page.read_text(encoding="utf-8")
-    html = html.replace('"js/app.js"', f'"js/app.js?v={version}"').replace('"css/app.css"', f'"css/app.css?v={version}"')
+    for name in ASSETS:
+        html = html.replace(f'"{name}"', f'"{name}?v={version}"')
     return web.Response(text=html, content_type="text/html", headers={"Cache-Control": "no-cache"})
 
 
@@ -278,7 +283,29 @@ async def bootstrap(request: web.Request) -> web.Response:
         ],
         "favorites": files,
         "commands": [{"label": item.label, "command": item.command} for item in settings.commands],
+        "site_theme": _site_theme(engine),
     })
+
+
+def _site_theme(engine: Engine) -> dict | None:
+    raw = engine.auth.get_setting("theme")
+    if not raw:
+        return None
+    try:
+        return themes.clean(json.loads(raw))
+    except ValueError:
+        return None
+
+
+async def site_theme_set(request: web.Request) -> web.Response:
+    if _require(request, "admin") is None:
+        return web.json_response({"error": "admin required"}, status=401)
+    engine: Engine = request.app["engine"]
+    body = await _json(request)
+    theme = themes.clean(body.get("theme"))
+    engine.auth.set_setting("theme", None if theme is None else json.dumps(theme))
+    _log(request, "set site theme", detail=themes.label(theme))
+    return web.json_response({"site_theme": theme})
 
 
 def _host_facts() -> dict:

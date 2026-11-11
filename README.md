@@ -37,6 +37,7 @@ Everything is original code, apart from the node status updater, which comes fro
 - **Control bar**: connect, monitor, local monitor, disconnect, disconnect all, DTMF, and command templates from `commands.ini`.
 - **Last heard**: who keyed up, on which node, and for how long, kept for 30 days. The panel shows the latest 5 by default.
 - **Display**: each browser picks which panels, node-card lines, and connection columns it shows, plus how many last heard rows. Handy for a kiosk screen that only needs the node cards.
+- **Themes**: dark, light, blue, green, seafoam, and neon purple, plus custom themes you build, share as a file, or set as the [site default](#themes).
 - **Find a node**: search the AllStar node directory by callsign, city, hub name, or number.
 - **Favorites** from a Supermon `favorites.ini`, with live activity for each favorite.
 - **Link map**: a diagram of each node's connections, folded into its card.
@@ -243,12 +244,20 @@ Anyone logged in can change their own password with **Account** in the header. I
 
 Admins open **Users** to add, edit, or remove accounts. Edit changes the role and the node limit, and can set a new password (leave it blank to keep the current one); a new password logs that user out everywhere. The last admin cannot be removed or turned into an operator or viewer.
 
+## Themes
+
+**Theme** in the header lists the built-in themes with a small preview of each. A pick is kept in that browser only, so a kiosk screen and a phone can each have their own.
+
+**New custom theme** starts from the theme in use and opens a color picker for the page colors (background, panels, borders, text, buttons) and the status colors (local, network, telemetry, playback, connected, favorite activity, idle, warnings). The page changes as you pick, and a note appears when text would be hard to read. Custom themes have **Edit**, **Export**, and **Delete** buttons. Export saves a small `.json` file that anyone can bring into their own browser with **Import a theme file**.
+
+Admins also see **Site default**: **Use my current theme for everyone** makes the theme in use the default for every browser that has not picked one, including people who are not logged in. **Go back to the stock dark theme** clears it. The site default is kept in `smelite.db`, so it is part of the users group in a [settings backup](#settings-backup).
+
 ## Settings backup
 
 Admins find **Backup** on the Admin page. **Download backup** saves one `.tar.gz` holding:
 
 - SM-Elite's config folder: `smelite.ini`, `nodes.ini`, `commands.ini`, `dvswitch.ini`, `node_info.ini`, `asdb.txt`, and the `favorites*.ini` files
-- the users and scheduled actions (`smelite.db`, `schedule.db`), with login sessions left out
+- the users, scheduled actions, and site theme (`smelite.db`, `schedule.db`), with login sessions left out
 - the last heard list and the action log (`history.db`, `actions.db`)
 
 The file holds the AMI and hotspot passwords and the login password hashes, so keep it somewhere private.

@@ -1341,12 +1341,6 @@ function wireDialogs() {
       $("setup-error").textContent = error.message;
     }
   });
-  $("theme-btn").addEventListener("click", () => {
-    const next = document.documentElement.dataset.theme === "light" ? "dark" : "light";
-    document.documentElement.dataset.theme = next;
-    localStorage.setItem("smelite-theme", next);
-    $("theme-btn").textContent = next === "light" ? "Dark" : "Light";
-  });
   $("touch-btn").addEventListener("click", () => {
     document.body.classList.toggle("touch");
     localStorage.setItem("smelite-touch", document.body.classList.contains("touch") ? "1" : "0");
@@ -2723,9 +2717,6 @@ async function openUsers() {
 }
 
 async function boot() {
-  const savedTheme = localStorage.getItem("smelite-theme");
-  if (savedTheme) document.documentElement.dataset.theme = savedTheme;
-  $("theme-btn").textContent = document.documentElement.dataset.theme === "light" ? "Dark" : "Light";
   if (localStorage.getItem("smelite-touch") === "1") document.body.classList.add("touch");
   loadDisplay();
   state.boot = await api("/api/bootstrap");
@@ -2738,6 +2729,7 @@ async function boot() {
   renderChrome();
   wireDialogs();
   wireDisplay();
+  wireThemes();
   wireFinder();
   wireAccess();
   wireAdmin();

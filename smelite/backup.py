@@ -31,7 +31,7 @@ MAX_MEMBERS = 200
 
 GROUPS = {
     "config": "Config files",
-    "accounts": "Users and scheduled actions",
+    "accounts": "Users, scheduled actions, and the site theme",
     "history": "Last heard and the action log",
 }
 DATABASES = {

@@ -10,6 +10,7 @@
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <meta name="theme-color" content="#10161c">
   <link rel="stylesheet" href="css/app.css">
+  <script src="js/theme.js"></script>
 </head>
 <body>
   <header class="top">
@@ -22,7 +23,7 @@
     </div>
     <div class="top-actions">
       <span id="health" class="pill">…</span>
-      <button id="theme-btn" type="button">Light</button>
+      <button id="theme-btn" type="button">Theme</button>
       <button id="touch-btn" type="button">Touch</button>
       <button id="display-btn" type="button">Display</button>
       <button id="users-btn" type="button" hidden>Users</button>
@@ -253,6 +254,47 @@
       <button type="button" id="dvs-restart" class="ghost" hidden>Restart bridge services</button>
       <button type="button" id="dvs-refresh" class="ghost">Refresh</button>
       <button type="button" id="dvs-close" class="ghost">Close</button>
+    </div>
+  </dialog>
+
+  <dialog id="theme-dialog" class="wide">
+    <h2>Theme</h2>
+    <p class="hint">Your pick is kept in this browser. Other browsers and users keep their own.</p>
+    <div id="theme-list" class="theme-list"></div>
+    <div class="theme-tools">
+      <button type="button" id="theme-new">New custom theme</button>
+      <button type="button" id="theme-import" class="ghost">Import a theme file</button>
+      <input type="file" id="theme-import-file" accept=".json,application/json" hidden>
+    </div>
+    <form id="theme-editor" hidden>
+      <h3 id="theme-editor-title">New custom theme</h3>
+      <label>Name <input name="label" maxlength="40" required></label>
+      <p class="hint">Changes show on the page as you pick them.</p>
+      <fieldset class="scope">
+        <legend>Page</legend>
+        <div id="theme-colors-page" class="theme-colors"></div>
+      </fieldset>
+      <fieldset class="scope">
+        <legend>Status colors</legend>
+        <div id="theme-colors-status" class="theme-colors"></div>
+      </fieldset>
+      <p id="theme-contrast" class="form-error"></p>
+      <div class="dialog-actions">
+        <button type="button" id="theme-editor-cancel" class="ghost">Cancel</button>
+        <button type="submit">Save theme</button>
+      </div>
+    </form>
+    <section id="theme-site" hidden>
+      <h3>Site default</h3>
+      <p id="theme-site-now" class="hint"></p>
+      <div class="theme-tools">
+        <button type="button" id="theme-site-set">Use my current theme for everyone</button>
+        <button type="button" id="theme-site-clear" class="ghost">Go back to the stock dark theme</button>
+      </div>
+    </section>
+    <p id="theme-status" class="hint"></p>
+    <div class="dialog-actions">
+      <button type="button" id="theme-close">Done</button>
     </div>
   </dialog>
 

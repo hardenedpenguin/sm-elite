@@ -111,6 +111,20 @@ def _verify_password(password: str, stored: str) -> bool:
 class AuthStore(SQLiteStore):
     tables = ("users", "sessions")
 
+    def get_setting(self, key: str) -> str | None:
+        row = self._db.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+        return None if row is None else row["value"]
+
+    def set_setting(self, key: str, value: str | None) -> None:
+        if value is None:
+            self._db.execute("DELETE FROM settings WHERE key = ?", (key,))
+        else:
+            self._db.execute(
+                "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                (key, value),
+            )
+        self._db.commit()
+
     def _init(self) -> None:
         self._db.executescript(
             """
@@ -124,6 +138,10 @@ class AuthStore(SQLiteStore):
                 token TEXT PRIMARY KEY,
                 username TEXT NOT NULL,
                 expires INTEGER NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
             );
             """
         )

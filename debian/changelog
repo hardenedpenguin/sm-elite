@@ -1,3 +1,14 @@
+sm-elite (0.2.13) unstable; urgency=medium
+
+  * Themes: dark, light, blue, green, seafoam, and neon purple, picked per
+    browser from the new Theme dialog.
+  * Custom themes with a live color picker and a readability check; export
+    and import them as a file.
+  * Admins set a site default theme for browsers that have not picked one.
+    It is saved with the users in a settings backup.
+
+ -- Jory A. Pratt <geekypenguin@gmail.com>  Wed, 11 Nov 2026 12:00:00 -0600
+
 sm-elite (0.2.12) unstable; urgency=medium
 
   * Account: change your own password; other browsers logged in as you are
