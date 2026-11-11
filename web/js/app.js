@@ -209,20 +209,34 @@ function renderNav() {
     nav.append("No nodes configured");
     return;
   }
+  const all = allNodeIds();
+  const showingAll = sameNodes(state.selected, all);
   for (const item of buttons) {
     const button = document.createElement("button");
     button.type = "button";
-    button.className = item.ids.every((id) => state.selected.includes(id)) && item.ids.length === state.selected.length ? "on" : "";
+    const on = sameNodes(item.ids, state.selected);
+    button.className = on ? "on" : "";
+    button.setAttribute("aria-pressed", String(on));
     button.textContent = item.label;
-    button.addEventListener("click", () => selectNodes(item.ids));
+    if (on && !showingAll) button.title = "Click again to show all nodes";
+    button.addEventListener("click", () => selectNodes(on ? all : item.ids));
     nav.append(button);
   }
+}
+
+function allNodeIds() {
+  return (state.boot.nodes || []).map((node) => node.id);
+}
+
+function sameNodes(a, b) {
+  return a.length === b.length && a.every((id) => b.includes(id));
 }
 
 function selectNodes(ids) {
   state.selected = ids.filter((id, index) => ids.indexOf(id) === index).sort(compareNodes);
   if (!state.selected.includes(state.local)) state.local = state.selected[0] || "";
-  history.replaceState(null, "", `#${state.selected.join(",")}`);
+  const hash = sameNodes(state.selected, allNodeIds()) ? "" : `#${state.selected.join(",")}`;
+  history.replaceState(null, "", `${location.pathname}${location.search}${hash}`);
   renderNav();
   renderControl();
   pruneCards();

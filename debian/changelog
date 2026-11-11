@@ -1,3 +1,10 @@
+sm-elite (0.2.15) unstable; urgency=medium
+
+  * Clicking the selected node or group button again goes back to showing
+    all nodes, and the address drops the node list so a reload does too.
+
+ -- Jory A. Pratt <geekypenguin@gmail.com>  Wed, 11 Nov 2026 13:45:00 -0600
+
 sm-elite (0.2.14) unstable; urgency=medium
 
   * The control bar shows only for operators and admins, and lists only
