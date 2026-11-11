@@ -1,3 +1,13 @@
+sm-elite (0.2.14) unstable; urgency=medium
+
+  * The control bar shows only for operators and admins, and lists only
+    the nodes their account may control. Double-clicking a node no longer
+    tries to connect for visitors who cannot.
+  * Documentation split into one page per feature under docs/, installed
+    with the package in /usr/share/doc/sm-elite/docs.
+
+ -- Jory A. Pratt <geekypenguin@gmail.com>  Wed, 11 Nov 2026 13:05:00 -0600
+
 sm-elite (0.2.13) unstable; urgency=medium
 
   * Themes: dark, light, blue, green, seafoam, and neon purple, picked per

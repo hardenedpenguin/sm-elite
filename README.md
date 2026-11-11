@@ -11,7 +11,7 @@
 ![aiohttp](https://img.shields.io/badge/aiohttp-asyncio-2C5BB4?style=flat-square&logo=aiohttp&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Debian%20%2F%20ASL3-A81D33?style=flat-square&logo=debian&logoColor=white)
 
-> **Install and upgrades:** SM-Elite installs and updates through the **Debian `.deb` package**. Use the [hardenedpenguin APT repository](https://hardenedpenguin.github.io/hardenedpenguin-apt/) (`sudo apt install sm-elite`) or download a `.deb` from [Releases](https://github.com/hardenedpenguin/sm-elite/releases). See [Install on a node](#install-on-a-node-debian-package).
+> **Install and upgrades:** SM-Elite installs and updates through the **Debian `.deb` package**. Use the [hardenedpenguin APT repository](https://hardenedpenguin.github.io/hardenedpenguin-apt/) (`sudo apt install sm-elite`) or download a `.deb` from [Releases](https://github.com/hardenedpenguin/sm-elite/releases). See [Install on a node](#install-on-a-node).
 
 One AllStar dashboard that keeps the part of each existing monitor that is actually good at its job.
 
@@ -21,7 +21,7 @@ One AllStar dashboard that keeps the part of each existing monitor that is actua
 | AllScan | Favorites use the Supermon `label[]` / `cmd[]` file. Activity (transmit percent, Rx%, link count) comes from the AllStar stats service, paced once on the server, without connecting to those nodes. |
 | supermon-ng | Connect, monitor, local monitor, disconnect, permanent links, DTMF, and command templates on one bar. The node status block (CPU, weather, SkywarnPlus alerts, disk) is shown as the node reports it. One websocket carries every node. |
 
-Everything is original code, apart from the node status updater, which comes from supermon-ng (see [Node status block](#node-status-block)). The pieces that age badly stay out: per-button PHP permission files, HTML built inside the poller, a websocket port per node, one AMI session per browser, and shell commands as the control path.
+Everything is original code, apart from the node status updater, which comes from supermon-ng (see [Node status block](docs/node-status.md)). The pieces that age badly stay out: per-button PHP permission files, HTML built inside the poller, a websocket port per node, one AMI session per browser, and shell commands as the control path.
 
 <p align="center">
   <a href="images/sm-elite-main.png" title="Click to enlarge">
@@ -33,35 +33,43 @@ Everything is original code, apart from the node status updater, which comes fro
 
 ## Features
 
-- **Live node cards** with every connected link, direction, mode, and transmit state, plus the Supermon-style status block.
-- **Control bar**: connect, monitor, local monitor, disconnect, disconnect all, DTMF, and command templates from `commands.ini`.
+- **Live node cards** with every connected link, direction, mode, and transmit state, plus the Supermon-style [status block](docs/node-status.md).
+- **Control bar**: connect, monitor, local monitor, disconnect, disconnect all, DTMF, and command templates from `commands.ini`. It shows only for operators and admins, and only lists the nodes their account may control.
 - **Last heard**: who keyed up, on which node, and for how long, kept for 30 days. The panel shows the latest 5 by default.
 - **Display**: each browser picks which panels, node-card lines, and connection columns it shows, plus how many last heard rows. Handy for a kiosk screen that only needs the node cards.
-- **Themes**: dark, light, blue, green, seafoam, and neon purple, plus custom themes you build, share as a file, or set as the [site default](#themes).
-- **Find a node**: search the AllStar node directory by callsign, city, hub name, or number.
+- **[Themes](docs/themes.md)**: dark, light, blue, green, seafoam, and neon purple, plus custom themes you build, share as a file, or set as the site default.
+- **Find a node**: search the AllStar node directory by callsign, city, hub name, or number, with your own [private node names](docs/node-names.md) mixed in.
 - **Favorites** from a Supermon `favorites.ini`, with live activity for each favorite.
 - **Link map**: a diagram of each node's connections, folded into its card.
 - **Who can connect**: edit the node's allow and deny lists, and drop a denied node that is linked right now.
-- **Announce**: type text and play it with Piper text-to-speech, on this node only or on every connected link. Save announcements and replay them later.
-- **DVSwitch**: switch a bridged node between DMR, YSF, P25, NXDN, D-STAR, and the other DVSwitch modes, pick a talkgroup from your list or type one, and restart the bridge services.
+- **[Announce](docs/announce.md)**: type text and play it with Piper text-to-speech, on this node only or on every connected link. Save announcements and replay them later.
+- **[DVSwitch](docs/dvswitch.md)**: switch a bridged node between DMR, YSF, P25, NXDN, D-STAR, and the other DVSwitch modes, pick a talkgroup from your list or type one, and restart the bridge services.
 - **Keyup alerts**: a chime, an on-page notice, and (over HTTPS) a desktop notification when someone keys up on the nodes you pick.
 - **System**: OS, CPU, memory, disks, temperature, addresses, service status, AllStar packages, and the Asterisk database.
-- **Schedule**: connect, monitor, or disconnect a link, play a saved announcement, or run a command from `commands.ini` at a set time on chosen days of the week, or once on a date. Handy for linking to a net and dropping it afterwards.
-- **Admin**: reload or restart Asterisk, reboot or power off the server, edit `rpt.conf`, `iax.conf`, `extensions.conf`, and SM-Elite's own `asdb.txt` and `node_info.ini` with automatic backups, compare and restore backups, read the Asterisk log, and download or restore a [settings backup](#settings-backup).
-- **Action log**: admins see who connected, disconnected, announced, scheduled, edited a file, or logged in, when, and from where.
-- **Users**: viewers watch, operators control nodes (optionally limited to certain node numbers), and admins also manage users and the admin tools. Everyone can change their own password under **Account**.
+- **[Schedule](docs/schedule.md)**: connect, monitor, or disconnect a link, play a saved announcement, or run a command from `commands.ini` at a set time on chosen days of the week, or once on a date. Handy for linking to a net and dropping it afterwards.
+- **[Admin](docs/admin.md)**: reload or restart Asterisk, reboot or power off the server, edit `rpt.conf`, `iax.conf`, `extensions.conf`, and SM-Elite's own `asdb.txt` and `node_info.ini` with automatic backups, compare and restore backups, read the Asterisk log, and download or restore a [settings backup](docs/backup.md).
+- **[Action log](docs/action-log.md)**: admins see who connected, disconnected, announced, scheduled, edited a file, or logged in, when, and from where.
+- **[Users](docs/users.md)**: viewers watch, operators control nodes (optionally limited to certain node numbers), and admins also manage users and the admin tools. Everyone can change their own password under **Account**.
 
-## Try it
+## Documentation
 
-```bash
-python3 -m smelite
-```
+| Page | Covers |
+| --- | --- |
+| [Install on a node](docs/install.md) | the Debian package, what it sets up, updating, removing, file locations, HTTPS |
+| [Configuration](docs/configuration.md) | every section of `smelite.ini` |
+| [Users and accounts](docs/users.md) | roles, node limits, passwords |
+| [Private node names](docs/node-names.md) | naming private, IRLP, and EchoLink nodes in `asdb.txt` |
+| [Node status block](docs/node-status.md) | weather, alerts, and system lines under each node card |
+| [Announce](docs/announce.md) | text-to-speech and saved sounds |
+| [DVSwitch](docs/dvswitch.md) | bridges, networks, talkgroups, and the supermon-ng import |
+| [Schedule](docs/schedule.md) | timed and one-time actions |
+| [Themes](docs/themes.md) | built-in and custom themes, the site default |
+| [Action log](docs/action-log.md) | what is recorded and for how long |
+| [Admin tools](docs/admin.md) | the Admin page and how SM-Elite gets root access |
+| [Settings backup](docs/backup.md) | downloading and restoring config, users, and history |
+| [Development](docs/development.md) | demo mode, tests, building the package, releasing, code layout |
 
-Open http://127.0.0.1:8420/ . The shipped config is in demo mode, so the page runs with synthetic nodes and no Asterisk. The first visit asks you to create the admin account.
-
-Requires Python 3.11 or newer and aiohttp (`apt install python3-aiohttp` on Debian).
-
-## Install on a node (Debian package)
+## Install on a node
 
 On an AllStarLink 3 node (Debian 12 or 13), add the [hardenedpenguin apt repository](https://hardenedpenguin.github.io/hardenedpenguin-apt/) once, then install:
 
@@ -73,233 +81,7 @@ sudo apt update
 sudo apt install sm-elite
 ```
 
-The `.deb` is also attached to each [GitHub release](https://github.com/hardenedpenguin/sm-elite/releases) for `sudo apt install ./sm-elite_<version>_all.deb`.
-
-Then open `http://<node>/sm-elite/`. On an ASL3 appliance, port 80 forwards to HTTPS, so you land on `https://<node>/sm-elite/`. The first visit asks you to create the admin account. That needs the one-time setup code the install prints, which is also in `/var/lib/sm-elite/setup-code` (`sudo cat` it), so nobody else who reaches the page first can claim the node.
-
-The package:
-
-1. pulls in `python3-aiohttp`, `apache2`, and `sudo`
-2. creates the `smelite` system account the dashboard runs as
-3. reads the node numbers and callsign from `/etc/asterisk/rpt.conf` and the AMI login from `/etc/asterisk/manager.conf`, and writes `/etc/sm-elite/smelite.ini` and `nodes.ini` (readable only by root and the `smelite` group; the AMI password is never printed)
-4. copies an existing Supermon `favorites.ini` into `/etc/sm-elite` when it finds one, so removing Supermon later leaves your favorites in place
-5. starts the `sm-elite` service on `127.0.0.1:8420` and publishes it through Apache at `/sm-elite/` on ports 80 and 443
-6. turns on the admin tools through `/usr/lib/sm-elite/smelite-admin` and its sudoers rule (set `[admin] enabled = no` to turn them off)
-7. writes `/etc/sm-elite/node_info.ini` (copied from supermon-ng when it is there) and starts `sm-elite-node-status.timer`, which fills in the [node status block](#node-status-block)
-
-**Updating**: `sudo apt update && sudo apt upgrade`, or install the newer release file the same way. Your config, users, and history are kept and the service restarts on the new version.
-
-**Removing**: `sudo apt remove sm-elite` keeps `/etc/sm-elite` and `/var/lib/sm-elite`; `sudo apt purge sm-elite` deletes them too.
-
-| Path | What |
-| --- | --- |
-| `/etc/sm-elite/` | `smelite.ini`, `nodes.ini`, `dvswitch.ini`, favorites, command templates |
-| `/var/lib/sm-elite/` | users, sessions, last heard, node directory cache |
-| `/usr/share/sm-elite/` | the program and the example config files |
-| `/etc/apache2/conf-available/sm-elite.conf` | the `/sm-elite/` proxy |
-
-Logs: `journalctl -u sm-elite`.
-
-### Building the package
-
-```bash
-sudo apt install debhelper python3-aiohttp
-./deploy/build-deb.sh
-```
-
-The `.deb` lands in `dist/`. The build runs the test suite first. Bump the version in both `debian/changelog` (`dch -v <version>`) and `smelite/__init__.py`; the script refuses to build when they differ.
-
-### Releasing
-
-Push a tag that matches the changelog version, for example `git tag v0.2.8 && git push origin v0.2.8`. The Release workflow tests on Debian 12, builds on Debian 13, attaches the `.deb` to a GitHub release, and asks the hardenedpenguin apt repository to publish it. That last step needs the `APT_REPO_DISPATCH_TOKEN` repository secret; without it the release still succeeds and the apt repository picks the package up on its daily run.
-
-## HTTPS
-
-`deploy/apache-sm-elite.conf` proxies `/sm-elite/` to the dashboard on `127.0.0.1`, including the websocket. It works inside the existing ASL3 Apache site, so it shares that site's certificate. The stock certificate is self-signed, so browsers warn once. With a real hostname, `certbot --apache` replaces it.
-
-Over HTTPS the session cookie is `__Secure-smelite` (Secure, HttpOnly). Desktop notifications for keyup alerts need HTTPS.
-
-The dashboard trusts `X-Forwarded-For` and `X-Forwarded-Proto` only from the addresses in `[server] trusted_proxies` (default `127.0.0.1, ::1`).
-
-## Configuration
-
-`smelite.ini`, with paths relative to the file's own folder:
-
-| Section | Keys |
-| --- | --- |
-| `[server]` | `listen` (comma-separated), `port`, `public` (`read` lets anyone watch, `none` requires a login), `data_dir`, `demo`, `trusted_proxies` |
-| `[site]` | `title`, `callsign`, `location`, `welcome` |
-| `[nodes]` | `file`: AMI logins in Allmon3 / supermon-ng stanza format (`host`, `port`, `user`, `pass` or `passwd`, `voters`, `multinodes`) |
-| `[favorites]` | `directory` holding Supermon-style `favorites.ini` files |
-| `[commands]` | `file` with the command templates for the More commands menu |
-| `[database]` | `url`, `file`, `private` (your own node names, see [Private node names](#private-node-names-asdbtxt)), `refresh_minutes` for the AllStar node directory |
-| `[stats]` | `enabled`, `min_gap_seconds` between AllStar stats requests |
-| `[history]` | `enabled`, `keep_days` for last heard, `action_days` for the action log (default 90) |
-| `[admin]` | `enabled`, `config_dir` (`/etc/asterisk`), `log_file`, `helper` |
-| `[sounds]` | `directory`, `voices` (Piper `.onnx` models), `piper`, `sox`, `max_chars` |
-| `[system]` | `services` to show on the System page |
-| `[dvswitch]` | `file` with the DVSwitch bridges and talkgroups (default `dvswitch.ini`) |
-
-Text-to-speech needs `piper` and `sox` on the node and at least one voice in `/var/lib/piper-tts`. Without them the Announce dialog still plays saved sounds.
-
-### Private node names (asdb.txt)
-
-Private nodes, IRLP or EchoLink gateways, and anything else missing from the AllStar node directory show up as a bare number. Give them a name in `/etc/sm-elite/asdb.txt`, one node per line:
-
-```
-node|callsign|description|location
-```
-
-For example:
-
-```
-1999|W5GLE|Shop radio|Alvin, Texas
-80016|NEWSLINE|[IRLP EXP0016]|Amateur Radio Newsline
-89990|REF9990|[IRLP 9990]|ECHO Reflector
-```
-
-- Lines starting with `;` or `#` are comments. The package installs the file with a commented example.
-- Entries here win over the AllStar directory, so you can also rename a public node.
-- The names appear in node cards, favorites, Find a node, the Who can connect lists, and last heard (from the next keyup on; earlier entries keep the name they were saved with).
-- Edit it on the Admin page (Config files, then `asdb.txt`); the names apply as soon as you save, and the previous version is backed up. From a shell, edit it as root (`sudo nano /etc/sm-elite/asdb.txt`); SM-Elite reads it again on the next directory refresh (every 15 minutes, `refresh_minutes` in `[database]`), or right away after `sudo systemctl restart sm-elite`.
-- Coming from Supermon or supermon-ng: `privatenodes.txt` uses the same format, so its lines can be copied in as they are.
-
-## Node status block
-
-The lines under each node card's title (weather, SkywarnPlus-NG alerts, CPU temperature, uptime, load, and disk) are app_rpt variables the node publishes. The package keeps them current with `sm-elite-node-status.timer`, which runs `/usr/lib/sm-elite/ast_node_status_update.py` one minute after boot and every 4 minutes after that. The updater comes from supermon-ng.
-
-Its settings are in `/etc/sm-elite/node_info.ini`:
-
-```ini
-[general]
-NODE = 546050 546051
-WX_USE_GPS = no
-WX_CODE = 77511
-WX_LOCATION = Alvin, Texas
-TEMP_UNIT = F
-ALERT_PROVIDER = skywarnplus
-
-[skywarnplus]
-MASTER_ENABLE = yes
-API_URL = http://127.0.0.1:8100
-```
-
-- `NODE` lists the nodes to update. A fresh install fills it in from `rpt.conf`.
-- Weather needs [saytime_weather_rb](https://github.com/hardenedpenguin/saytime_weather_rb) (`sudo apt install saytime-weather-rb`). Set `WX_CODE` to a ZIP or airport code and `WX_LOCATION` to the name to show, or set `WX_USE_GPS = yes`. With the placeholder `00000` the weather line stays empty.
-- Alerts come from [SkywarnPlus-NG](https://github.com/hardenedpenguin/SkywarnPlus-NG), or CANWarn-NG with `ALERT_PROVIDER = canwarn` and its `[canwarn_ng]` section. The install turns SkywarnPlus-NG alerts on when that package is installed.
-- `TEMP_UNIT` is `F` or `C`.
-
-Edit it on the Admin page (Config files, then `node_info.ini`); saving there runs the updater right away. Changes made from a shell apply on the next run, or run it now with `sudo systemctl start sm-elite-node-status`. Its output is in `journalctl -u sm-elite-node-status`.
-
-While supermon-ng is installed with its own status timer on, SM-Elite's updater skips each run and leaves the job to supermon-ng. After supermon-ng is removed, SM-Elite's copy of its `node_info.ini` takes over.
-
-## DVSwitch
-
-For a node with a DVSwitch bridge (Analog_Bridge and MMDVM_Bridge), edit `/etc/sm-elite/dvswitch.ini` (the package puts a commented copy there):
-
-```ini
-[node 1999]
-abinfo = /tmp/ABInfo_34001.json
-
-[network brandmeister]
-label = BrandMeister
-password = your-hotspot-password
-server = 3102.master.brandmeister.network
-port = 62031
-
-[mode DMR]
-BM Texas = @brandmeister 3148
-BM Parrot = @brandmeister 9990#
-
-[mode YSF]
-America Link = americalink.hamfm.com:42000
-```
-
-A DVSwitch button then appears in the control bar for that node. SM-Elite talks to Analog_Bridge directly on the control port listed in its ABInfo file, the same messages `dvswitch.sh` sends, so it needs no shell scripts. Hotspot passwords stay in `dvswitch.ini` (readable only by root and the dashboard's group); the browser sees talkgroup names only, and talkgroups typed by hand cannot contain a password. Operators can switch modes and talkgroups; admins can also restart the `mmdvm_bridge*` and `analog_bridge*` services (second instances such as `analog_bridge2` included).
-
-**Coming from supermon-ng:** when `/etc/supermon-ng/user_files/dvswitch_config.yml` exists, installing or upgrading the package writes `dvswitch.ini` from it: credential profiles become `[network]` sections, and every mode's talkgroups carry over. Each node with `rxchannel = USRP/127.0.0.1:<port>:...` in rpt.conf gets a `[node N]` section pointing at `/tmp/ABInfo_<port>.json` and the DVSwitch.ini next to the matching Analog_Bridge.ini (for example `/etc/dvswitch/2/` for a second bridge). This happens once, and only while `dvswitch.ini` has no `[node N]` section; the previous file is kept as `dvswitch.ini.before-import`. Per-node `dvswitch_config_<node>.yml` lists are not imported.
-
-## Schedule
-
-Operators open **Schedule** in the control bar to add an action: pick the node, the action (connect, monitor, local monitor, disconnect, disconnect all, play a saved sound, or a command from `commands.ini`), the time, and either the days of the week it repeats on or a single date. A Tuesday net might be a permanent connect to the net's hub at 19:55 and a disconnect at 21:05; a special event net can run once on its date.
-
-- Times use the node's own clock and time zone, shown at the top of the dialog.
-- Each action runs with the permissions of the user who added or last edited it, at the moment it runs. Removing that user, or limiting them to other nodes, stops their scheduled actions; the last run column then says why it was skipped.
-- Operators see and manage the scheduled actions on the nodes they may control; admins see all of them.
-- Edit loads an action back into the form; saving it turns the action on again and keeps its last run.
-- Pause keeps an action without running it, and Run now runs it once straight away.
-- A one-time action pauses itself after it runs. Edit it to give it a new date.
-- An action whose time passes while SM-Elite is stopped is skipped; it runs again at its next time.
-- Every run is in the action log, with its result.
-
-## Action log
-
-Admins find it under **System**, then **Action log**. It lists each control action (connect, disconnect, DTMF, commands), announcement, allow and deny list change, DVSwitch change, favorite added or removed, scheduled action added, edited, run, paused, or removed, config file save or restore, settings backup download or restore, Asterisk restart, reboot, user added, edited, or removed, password change, and login. Each entry has the user, node, target, a short detail, and the address it came from. Passwords and file contents are never stored. A failed login with an unknown username is recorded without the name, since that is often a password typed into the wrong box.
-
-Entries are kept for 90 days (`action_days` in `[history]`) in `/var/lib/sm-elite/actions.db`.
-
-## Accounts
-
-Anyone logged in can change their own password with **Account** in the header. It asks for the current password, and logs out every other browser signed in as that user.
-
-Admins open **Users** to add, edit, or remove accounts. Edit changes the role and the node limit, and can set a new password (leave it blank to keep the current one); a new password logs that user out everywhere. The last admin cannot be removed or turned into an operator or viewer.
-
-## Themes
-
-**Theme** in the header lists the built-in themes with a small preview of each. A pick is kept in that browser only, so a kiosk screen and a phone can each have their own.
-
-**New custom theme** starts from the theme in use and opens a color picker for the page colors (background, panels, borders, text, buttons) and the status colors (local, network, telemetry, playback, connected, favorite activity, idle, warnings). The page changes as you pick, and a note appears when text would be hard to read. Custom themes have **Edit**, **Export**, and **Delete** buttons. Export saves a small `.json` file that anyone can bring into their own browser with **Import a theme file**.
-
-Admins also see **Site default**: **Use my current theme for everyone** makes the theme in use the default for every browser that has not picked one, including people who are not logged in. **Go back to the stock dark theme** clears it. The site default is kept in `smelite.db`, so it is part of the users group in a [settings backup](#settings-backup).
-
-## Settings backup
-
-Admins find **Backup** on the Admin page. **Download backup** saves one `.tar.gz` holding:
-
-- SM-Elite's config folder: `smelite.ini`, `nodes.ini`, `commands.ini`, `dvswitch.ini`, `node_info.ini`, `asdb.txt`, and the `favorites*.ini` files
-- the users, scheduled actions, and site theme (`smelite.db`, `schedule.db`), with login sessions left out
-- the last heard list and the action log (`history.db`, `actions.db`)
-
-The file holds the AMI and hotspot passwords and the login password hashes, so keep it somewhere private.
-
-To restore, choose a backup file. The page shows where and when it was made and what it holds, then you tick the parts to bring back:
-
-- **Config files** are written through the root helper, each replaced file first copied to `/var/backups/smelite`, and SM-Elite restarts a few seconds later to load them. Check `nodes.ini` and `smelite.ini` when moving to a different node.
-- **Users and scheduled actions** replace every account and schedule, and log everyone out, you included. Log back in with an account from the backup. A backup whose accounts include no admin is refused.
-- **Last heard and the action log** replace those lists.
-
-Restoring is recorded in the action log.
-
-## Admin tools and root access
-
-The dashboard runs as an ordinary account. Anything that needs root goes through one small script, `/usr/lib/sm-elite/smelite-admin`, which that account may run with `sudo` and nothing else. The helper:
-
-- writes only `rpt.conf`, `iax.conf`, `extensions.conf`, `/etc/sm-elite/asdb.txt`, and `/etc/sm-elite/node_info.ini`, and only when the file still matches the version the editor loaded
-- writes SM-Elite's own config files in `/etc/sm-elite` when restoring a settings backup, keeping each file's owner and mode
-- keeps the last 20 versions of each file in `/var/backups/smelite` (mode 600)
-- saves and deletes announcements in the Asterisk sounds folder
-- restarts the DVSwitch bridge services and SM-Elite itself, and starts the node status updater, and no other services
-- schedules reboot and power off five seconds out, so the page can answer first
-
-Every change made from the Admin page asks for the admin's password again.
-
-## Layout
-
-- `smelite/` the Python service: AMI, snapshots, stats cache, auth, history, admin, sounds, system info, DVSwitch, schedule, action log, settings backup
-- `web/` the dashboard (plain HTML, CSS, and JavaScript, with no build step)
-- `config/` demo config and examples
-- `debian/` Debian packaging
-- `deploy/` package build script, config generator, Apache snippet, root helper, node status updater
-- `data/` SQLite users, sessions, last heard, the action log, scheduled actions, and the node directory cache for the demo
-- `images/` screenshots for this README
-
-Node snapshots, last heard, and the favorites scan arrive on `/ws`. Commands are `POST /api/command` and stay off the socket.
-
-## Tests
-
-```bash
-python3 -m unittest discover -s tests
-```
+Then open `http://<node>/sm-elite/` and create the admin account with the one-time setup code the install prints. [Install on a node](docs/install.md) covers what the package sets up, HTTPS, updating, and removing.
 
 ## Thanks
 

@@ -125,7 +125,8 @@ async function sendCommand(action, extra = {}) {
   const node = state.local || state.selected[0];
   if (!node) return;
   if (!canCommand(node)) {
-    showResult("Login required", "Log in as an operator to control this node.");
+    if (operator()) showResult("Not allowed", `Your account cannot control node ${node}.`);
+    else showResult("Login required", "Log in as an operator to control this node.");
     return;
   }
   if (["connect", "monitor", "local_monitor"].includes(action) && state.dropFirst) {
@@ -154,7 +155,7 @@ function chooseTarget(node, { connect = false } = {}) {
   state.target = String(node);
   const input = document.querySelector("#target");
   if (input) input.value = state.target;
-  if (connect) sendCommand("connect");
+  if (connect && operator()) sendCommand("connect");
 }
 
 function renderChrome() {
@@ -232,10 +233,14 @@ function selectNodes(ids) {
 function renderControl() {
   const bar = $("control");
   bar.replaceChildren();
+  const mine = state.selected.filter(canCommand);
+  bar.hidden = !mine.length;
+  if (!mine.length) return;
+  if (!mine.includes(state.local)) state.local = mine[0];
   const local = field("Local node");
   const select = document.createElement("select");
   select.id = "local-node";
-  for (const id of state.selected) {
+  for (const id of mine) {
     const option = document.createElement("option");
     option.value = id;
     option.textContent = id;
@@ -800,7 +805,9 @@ async function runFinder(query) {
   const note = $("finder-note");
   const host = $("finder-results");
   if (query.length < 2) {
-    note.textContent = "Searches the AllStar node directory. Click a node to put it in the target box.";
+    note.textContent = operator()
+      ? "Searches the AllStar node directory. Click a node to put it in the target box."
+      : "Searches the AllStar node directory.";
     host.replaceChildren();
     return;
   }
