@@ -172,6 +172,11 @@
       <label class="check"><input type="radio" name="sound-scope" value="local" checked> This node's radio only</label>
       <label class="check"><input type="radio" name="sound-scope" value="links"> This node and every connected link</label>
     </fieldset>
+    <fieldset class="scope">
+      <legend>When</legend>
+      <label class="check"><input type="radio" name="sound-mode" value="polite" checked> Polite: wait until nobody is talking (up to 5 minutes)</label>
+      <label class="check"><input type="radio" name="sound-mode" value="priority"> Priority: play right away</label>
+    </fieldset>
     <section id="tts">
       <h3>Say something</h3>
       <label>Text <textarea id="tts-text" rows="3"></textarea></label>
@@ -190,6 +195,15 @@
       <h3>Saved sounds</h3>
       <div id="sound-list"></div>
     </section>
+    <form id="sound-upload" hidden>
+      <h3>Upload a sound</h3>
+      <div class="file-bar">
+        <input type="file" name="file" accept=".mp3,.wav,audio/mpeg,audio/wav" aria-label="MP3 or WAV file" required>
+        <input name="name" placeholder="announcement-name" maxlength="40" pattern="[a-z0-9][a-z0-9_\-]{0,39}" aria-label="Announcement name" required>
+        <button type="submit" class="ghost">Upload</button>
+      </div>
+      <p id="sound-upload-hint" class="hint"></p>
+    </form>
     <p id="sounds-status" class="hint"></p>
     <div class="dialog-actions">
       <button type="button" id="sounds-close" class="ghost">Close</button>

@@ -26,7 +26,7 @@ from .favorites import Favorite, add_favorite, list_files, load_file, remove_fav
 from .monitor import Engine
 from .schedule import ACTIONS as SCHEDULE_ACTIONS, Job, validate
 from . import sysinfo
-from .sounds import SCOPES
+from .sounds import MAX_UPLOAD_BYTES, SCOPES
 
 log = logging.getLogger("smelite")
 
@@ -90,6 +90,7 @@ def create_app(engine: Engine) -> web.Application:
     app.router.add_post("/api/sounds/speak", sounds_speak)
     app.router.add_post("/api/sounds/play", sounds_play)
     app.router.add_post("/api/sounds/save", sounds_save)
+    app.router.add_post("/api/sounds/upload", sounds_upload)
     app.router.add_post("/api/sounds/delete", sounds_delete)
     app.router.add_get("/api/dvswitch", dvswitch_get)
     app.router.add_post("/api/dvswitch/mode", dvswitch_mode)
@@ -699,6 +700,8 @@ async def sounds_get(request: web.Request) -> web.Response:
         "library": engine.sounds.library(),
         "max_chars": engine.sounds.max_chars,
         "can_save": user.allows("admin"),
+        "can_upload": user.allows("admin") and engine.sounds.upload_ready(),
+        "max_upload_mb": MAX_UPLOAD_BYTES // (1024 * 1024),
     })
 
 
@@ -711,10 +714,22 @@ async def sounds_speak(request: web.Request) -> web.Response:
     if scope not in SCOPES:
         raise ValueError("pick where to play it")
     text = str(body.get("text") or "")
+    polite = _polite(body)
     path, seconds = await engine.sounds.speak(text, str(body.get("voice") or ""))
-    await engine.play_sound(local, path, scope, user.name)
-    _log(request, "speak", node=local, target=SCOPE_LABELS.get(scope, scope), detail=text)
-    return web.json_response({"ok": True, "seconds": seconds})
+    played = await engine.play_sound(local, path, scope, user.name, polite=polite, label="speech")
+    _log(request, "speak", node=local, target=SCOPE_LABELS.get(scope, scope), detail=_waiting_note(text, played))
+    return web.json_response({"ok": True, "seconds": seconds, "waiting": not played})
+
+
+def _polite(body: dict) -> bool:
+    mode = str(body.get("mode") or "priority")
+    if mode not in ("polite", "priority"):
+        raise ValueError("pick polite or priority")
+    return mode == "polite"
+
+
+def _waiting_note(detail: str, played: bool) -> str:
+    return detail if played else f"{detail} · waiting for the node to clear"
 
 
 async def sounds_play(request: web.Request) -> web.Response:
@@ -724,10 +739,11 @@ async def sounds_play(request: web.Request) -> web.Response:
     user = _access_node(request, local, "operator")
     name = str(body.get("name") or "")
     scope = str(body.get("scope") or "local")
+    polite = _polite(body)
     path = engine.sounds.resolve(name)
-    await engine.play_sound(local, path, scope, user.name)
-    _log(request, "play sound", node=local, target=SCOPE_LABELS.get(scope, scope), detail=name)
-    return web.json_response({"ok": True})
+    played = await engine.play_sound(local, path, scope, user.name, polite=polite, label=name)
+    _log(request, "play sound", node=local, target=SCOPE_LABELS.get(scope, scope), detail=_waiting_note(name, played))
+    return web.json_response({"ok": True, "waiting": not played})
 
 
 async def sounds_save(request: web.Request) -> web.Response:
@@ -740,6 +756,35 @@ async def sounds_save(request: web.Request) -> web.Response:
     )
     log.warning("sound: %s saved %s", request["user"].name, entry["name"])
     _log(request, "save sound", target=entry["name"], detail=str(body.get("text") or ""))
+    return web.json_response({"saved": entry, "library": engine.sounds.library()})
+
+
+async def sounds_upload(request: web.Request) -> web.Response:
+    engine: Engine = request.app["engine"]
+    if _require(request, "admin") is None:
+        raise web.HTTPForbidden(text=json.dumps({"error": "admin required"}), content_type="application/json")
+    if not request.content_type.startswith("multipart/"):
+        raise ValueError("send the sound as a file upload")
+    reader = await request.multipart()
+    name, filename, data = "", "", b""
+    while (part := await reader.next()) is not None:
+        if not isinstance(part, BodyPartReader):
+            continue
+        limit = MAX_UPLOAD_BYTES if part.name == "file" else 256
+        chunks, size = [], 0
+        while chunk := await part.read_chunk(65536):
+            size += len(chunk)
+            if size > limit:
+                raise ValueError(f"keep uploads under {MAX_UPLOAD_BYTES // (1024 * 1024)} MB" if part.name == "file" else "form field is too long")
+            chunks.append(chunk)
+        if part.name == "file":
+            filename, data = part.filename or "", b"".join(chunks)
+        elif part.name == "name":
+            name = b"".join(chunks).decode("utf-8", errors="replace").strip().lower()
+    entry = await engine.sounds.upload(name, filename, data)
+    original = "".join(ch for ch in filename if ch.isprintable())[:100]
+    log.warning("sound: %s uploaded %s", request["user"].name, entry["name"])
+    _log(request, "upload sound", target=entry["name"], detail=original)
     return web.json_response({"saved": entry, "library": engine.sounds.library()})
 
 

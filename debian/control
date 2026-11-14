@@ -19,9 +19,10 @@ Depends: ${misc:Depends},
          adduser,
          sudo,
          apache2 (>= 2.4.47)
-Recommends: asl3-asterisk
+Recommends: asl3-asterisk,
+            sox,
+            libsox-fmt-mp3
 Suggests: asl3-tts,
-          sox,
           saytime-weather-rb,
           skywarnplus-ng
 Description: AllStar node dashboard

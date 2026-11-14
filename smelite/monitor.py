@@ -23,7 +23,7 @@ from .commands import action_command, check_command
 from .schedule import ACTIONS, Job, ScheduleStore, due_minutes
 from .admin import ASTERISK_ACTIONS, AdminTools
 from .dvswitch import DVSwitch
-from .sounds import SCOPES, Sounds
+from .sounds import POLITE_WAIT, SCOPES, Sounds
 from .ami import AmiError, AmiPool
 from .astdb import NodeDirectory
 from .auth import AuthStore
@@ -36,6 +36,8 @@ from .stats import Sample, StatsCache, parse_stats_payload
 log = logging.getLogger("smelite")
 
 _UPTIME_RE = re.compile(r"(\d+)")
+POLITE_POLL = 0.5
+POLITE_CLEAR = 1.5
 
 
 class Hub:
@@ -180,6 +182,7 @@ class Engine:
         self._ticks: dict[str, int] = {}
         self._echolink: dict[str, tuple[str, float]] = {}
         self._tasks: list[asyncio.Task] = []
+        self._polite: dict[str, asyncio.Task] = {}
         self.login_failures: dict[str, list[float]] = {}
 
     def describe(self, node: str) -> str:
@@ -209,9 +212,10 @@ class Engine:
 
     async def close(self) -> None:
         self.stop.set()
-        for task in self._tasks:
+        waiting = list(self._polite.values())
+        for task in [*self._tasks, *waiting]:
             task.cancel()
-        await asyncio.gather(*self._tasks, return_exceptions=True)
+        await asyncio.gather(*self._tasks, *waiting, return_exceptions=True)
         await self.pool.close()
         if self.http is not None:
             await self.http.close()
@@ -532,14 +536,55 @@ class Engine:
         if lowered.startswith("error") or "fail" in lowered:
             raise AmiError(result)
 
-    async def play_sound(self, local: str, path: str, scope: str, actor: str) -> None:
+    def node_busy(self, local: str) -> bool:
+        snapshot = self.hub.snapshots.get(local) or {}
+        return bool(snapshot.get("rx_keyed") or snapshot.get("remote_keyed"))
+
+    async def play_sound(
+        self, local: str, path: str, scope: str, actor: str, polite: bool = False, label: str = "",
+    ) -> bool:
+        """Play now and return True, or with ``polite`` on a busy node, wait in the background and return False."""
         verb = SCOPES.get(scope)
         if verb is None:
             raise ValueError("pick where to play it")
+        if polite and self.node_busy(local):
+            if local in self._polite:
+                raise ValueError(f"an announcement is already waiting for {local} to clear")
+            task = asyncio.create_task(
+                self._play_when_clear(local, path, scope, actor, label or path), name=f"polite-{local}",
+            )
+            self._polite[local] = task
+            task.add_done_callback(lambda _task: self._polite.pop(local, None))
+            return False
+        await self._play(local, path, scope, actor)
+        return True
+
+    async def _play(self, local: str, path: str, scope: str, actor: str) -> None:
         log.info("sound: %s played %s on %s (%s)", actor, path, local, scope)
-        result = await self.run_command(f"rpt {verb} {local} {path}", local)
+        result = await self.run_command(f"rpt {SCOPES[scope]} {local} {path}", local)
         if result.lower().startswith("error"):
             raise AmiError(result)
+
+    async def _play_when_clear(self, local: str, path: str, scope: str, actor: str, name: str) -> None:
+        deadline = time.monotonic() + POLITE_WAIT
+        clear_since = None
+        while time.monotonic() < deadline:
+            await asyncio.sleep(POLITE_POLL)
+            if self.node_busy(local):
+                clear_since = None
+            elif clear_since is None:
+                clear_since = time.monotonic()
+            elif time.monotonic() - clear_since >= POLITE_CLEAR:
+                break
+        else:
+            log.warning("sound: %s on %s not played, the node stayed busy", name, local)
+            self.record(actor, "sound not played", node=local, target=name, detail="the node stayed busy for 5 minutes")
+            return
+        try:
+            await self._play(local, path, scope, actor)
+        except (AmiError, OSError) as exc:
+            log.warning("sound: %s on %s failed after waiting: %s", name, local, exc)
+            self.record(actor, "sound not played", node=local, target=name, detail=str(exc))
 
     async def asterisk_action(self, action: str, local: str, actor: str) -> str:
         command, done = ASTERISK_ACTIONS[action]

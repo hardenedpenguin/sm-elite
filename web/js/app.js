@@ -1559,6 +1559,16 @@ function soundScope() {
   return document.querySelector("input[name=sound-scope]:checked").value;
 }
 
+function soundMode() {
+  return document.querySelector("input[name=sound-mode]:checked").value;
+}
+
+function playingNote(what, result) {
+  return result.waiting
+    ? `${sounds_state.node} is busy. ${what} plays once nobody is talking (gives up after 5 minutes).`
+    : `Playing ${what} on ${sounds_state.node}.`;
+}
+
 function confirmScope(what) {
   if (soundScope() !== "links") return true;
   return confirm(`Play ${what} on ${sounds_state.node} and every node linked to it?`);
@@ -1579,6 +1589,8 @@ async function openSounds() {
   $("tts").hidden = !info.tts;
   $("tts-off").hidden = info.tts;
   $("tts-save").hidden = !info.can_save;
+  $("sound-upload").hidden = !info.can_upload;
+  $("sound-upload-hint").textContent = `MP3 or WAV, up to ${info.max_upload_mb} MB and 10 minutes. It is saved under announcements/ with this name.`;
   const voice = $("tts-voice");
   const kept = voice.value;
   voice.replaceChildren(...info.voices.map((name) => new Option(name.replace(/^[a-z]{2}_[A-Z]{2}-/, "").replace(/-/g, " "), name)));
@@ -1627,9 +1639,9 @@ async function speakText() {
   try {
     const result = await api("/api/sounds/speak", {
       method: "POST",
-      body: { node: sounds_state.node, text, voice: $("tts-voice").value, scope: soundScope() },
+      body: { node: sounds_state.node, text, voice: $("tts-voice").value, scope: soundScope(), mode: soundMode() },
     });
-    soundsStatus(`Playing on ${sounds_state.node} (${result.seconds}s).`);
+    soundsStatus(playingNote(`the announcement (${result.seconds}s)`, result));
   } catch (error) {
     soundsStatus(error.message, true);
   } finally {
@@ -1640,8 +1652,11 @@ async function speakText() {
 async function playSound(name) {
   if (!confirmScope(name)) return;
   try {
-    await api("/api/sounds/play", { method: "POST", body: { node: sounds_state.node, name, scope: soundScope() } });
-    soundsStatus(`Playing ${name} on ${sounds_state.node}.`);
+    const result = await api("/api/sounds/play", {
+      method: "POST",
+      body: { node: sounds_state.node, name, scope: soundScope(), mode: soundMode() },
+    });
+    soundsStatus(playingNote(name, result));
   } catch (error) {
     soundsStatus(error.message, true);
   }
@@ -1679,11 +1694,54 @@ async function deleteSound(name) {
   }
 }
 
+function soundNameFrom(filename) {
+  return filename.replace(/\.[^.]*$/, "").toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^[-_]+|-+$/g, "").slice(0, 40);
+}
+
+async function uploadSound(event) {
+  event.preventDefault();
+  const form = event.target;
+  const file = form.elements.file.files[0];
+  const name = form.elements.name.value.trim().toLowerCase();
+  if (!file || !name) return;
+  const max = sounds_state.info.max_upload_mb;
+  if (file.size > max * 1024 * 1024) {
+    soundsStatus(`That file is over ${max} MB.`, true);
+    return;
+  }
+  const exists = sounds_state.info.library.some((item) => item.name === `announcements/${name}`);
+  if (exists && !confirm(`Replace the saved announcement "${name}"?`)) return;
+  const data = new FormData();
+  data.append("name", name);
+  data.append("file", file);
+  const button = form.querySelector("button[type=submit]");
+  button.disabled = true;
+  soundsStatus(`Uploading and converting ${file.name}…`);
+  try {
+    const result = await api("/api/sounds/upload", { method: "POST", body: data });
+    sounds_state.info.library = result.library;
+    renderSoundList();
+    form.reset();
+    soundsStatus(`Saved ${result.saved.name} (${result.saved.seconds}s). It can be played from the list above.`);
+  } catch (error) {
+    soundsStatus(error.message, true);
+  } finally {
+    button.disabled = false;
+  }
+}
+
 function wireSounds() {
   $("sounds-close").addEventListener("click", () => $("sounds-dialog").close());
   $("tts-text").addEventListener("input", updateTtsCount);
   $("tts-speak").addEventListener("click", speakText);
   $("tts-save-btn").addEventListener("click", saveSound);
+  const upload = $("sound-upload");
+  upload.addEventListener("submit", uploadSound);
+  const { file: picker, name: nameInput } = upload.elements;
+  picker.addEventListener("change", () => {
+    const file = picker.files[0];
+    if (file && !nameInput.value) nameInput.value = soundNameFrom(file.name);
+  });
 }
 
 const schedule_state = { info: null, editing: null };

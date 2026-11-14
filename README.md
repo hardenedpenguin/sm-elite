@@ -42,7 +42,7 @@ Everything is original code, apart from the node status updater, which comes fro
 - **Favorites** from a Supermon `favorites.ini`, with live activity for each favorite.
 - **Link map**: a diagram of each node's connections, folded into its card.
 - **Who can connect**: edit the node's allow and deny lists, and drop a denied node that is linked right now.
-- **[Announce](docs/announce.md)**: type text and play it with Piper text-to-speech, on this node only or on every connected link. Save announcements and replay them later.
+- **[Announce](docs/announce.md)**: type text and play it with Piper text-to-speech, or upload your own MP3 or WAV, on this node only or on every connected link. Polite mode waits until nobody is talking. Save announcements and replay them later.
 - **[DVSwitch](docs/dvswitch.md)**: switch a bridged node between DMR, YSF, P25, NXDN, D-STAR, and the other DVSwitch modes, pick a talkgroup from your list or type one, and restart the bridge services.
 - **Keyup alerts**: a chime, an on-page notice, and (over HTTPS) a desktop notification when someone keys up on the nodes you pick.
 - **System**: OS, CPU, memory, disks, temperature, addresses, service status, AllStar packages, and the Asterisk database.
@@ -60,7 +60,7 @@ Everything is original code, apart from the node status updater, which comes fro
 | [Users and accounts](docs/users.md) | roles, node limits, passwords |
 | [Private node names](docs/node-names.md) | naming private, IRLP, and EchoLink nodes in `asdb.txt` |
 | [Node status block](docs/node-status.md) | weather, alerts, and system lines under each node card |
-| [Announce](docs/announce.md) | text-to-speech and saved sounds |
+| [Announce](docs/announce.md) | text-to-speech, uploaded MP3 and WAV sounds, polite and priority playback |
 | [DVSwitch](docs/dvswitch.md) | bridges, networks, talkgroups, and the supermon-ng import |
 | [Schedule](docs/schedule.md) | timed and one-time actions |
 | [Themes](docs/themes.md) | built-in and custom themes, the site default |
