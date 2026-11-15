@@ -1,3 +1,10 @@
+sm-elite (0.2.19) unstable; urgency=medium
+
+  * Node status: drop CANWarn-NG alert support; SkywarnPlus-NG is the
+    only weather-alert source.
+
+ -- Jory A. Pratt <geekypenguin@gmail.com>  Sun, 15 Nov 2026 09:01:00 -0600
+
 sm-elite (0.2.18) unstable; urgency=medium
 
   * Themes: Transmitting color for the keyed connection row on a node

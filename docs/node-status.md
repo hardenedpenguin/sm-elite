@@ -11,7 +11,6 @@ WX_USE_GPS = no
 WX_CODE = 77511
 WX_LOCATION = Alvin, Texas
 TEMP_UNIT = F
-ALERT_PROVIDER = skywarnplus
 
 [skywarnplus]
 MASTER_ENABLE = yes
@@ -20,7 +19,7 @@ API_URL = http://127.0.0.1:8100
 
 - `NODE` lists the nodes to update. A fresh install fills it in from `rpt.conf`.
 - Weather needs [saytime_weather_rb](https://github.com/hardenedpenguin/saytime_weather_rb) (`sudo apt install saytime-weather-rb`). Set `WX_CODE` to a ZIP or airport code and `WX_LOCATION` to the name to show, or set `WX_USE_GPS = yes`. With the placeholder `00000` the weather line stays empty.
-- Alerts come from [SkywarnPlus-NG](https://github.com/hardenedpenguin/SkywarnPlus-NG), or CANWarn-NG with `ALERT_PROVIDER = canwarn` and its `[canwarn_ng]` section. The install turns SkywarnPlus-NG alerts on when that package is installed.
+- Alerts come from [SkywarnPlus-NG](https://github.com/hardenedpenguin/SkywarnPlus-NG). The install turns SkywarnPlus-NG alerts on when that package is installed.
 - `TEMP_UNIT` is `F` or `C`.
 
 Edit it on the Admin page (Config files, then `node_info.ini`); saving there runs the updater right away. Changes made from a shell apply on the next run, or run it now with `sudo systemctl start sm-elite-node-status`. Its output is in `journalctl -u sm-elite-node-status`.

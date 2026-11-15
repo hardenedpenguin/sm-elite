@@ -427,9 +427,9 @@ def _format_alert_html(enabled_text, has_alerts, alerts, no_alerts_text="<span s
     return f'"{total}"'
 
 
-def get_alerts_from_api(api_url, master_enable, nodes=None, product_name="SkywarnPlus-NG"):
+def get_alerts_from_api(api_url, master_enable, nodes=None):
     """
-    Get alerts from SkywarnPlus-NG- or CANWarn-NG-style API.
+    Get alerts from the SkywarnPlus-NG API.
 
     Uses per-node alerts (alerts_by_node) when the API provides them and nodes
     are configured, so each node shows alerts only for its counties.
@@ -449,13 +449,7 @@ def get_alerts_from_api(api_url, master_enable, nodes=None, product_name="Skywar
         Dict mapping node -> formatted HTML string (including quoted wrapper).
         Fallback key "" used for nodes not in alerts_by_node when using global fallback.
     """
-    product = (product_name or "SkywarnPlus-NG").strip()
-    if product.lower() in ("canwarn-ng", "canwarn_ng", "canwarn"):
-        github_link = '<a href=\'https://github.com/hardenedpenguin/CANWarn\' style=\'color: inherit; text-decoration: none;\'>CANWarn-NG</a>'
-        enabled_label = "CANWarn-NG Enabled"
-    else:
-        github_link = '<a href=\'https://github.com/hardenedpenguin/SkywarnPlus-NG\' style=\'color: inherit; text-decoration: none;\'>SkywarnPlus-NG</a>'
-        enabled_label = "SkywarnPlus-NG Enabled"
+    github_link = '<a href=\'https://github.com/hardenedpenguin/SkywarnPlus-NG\' style=\'color: inherit; text-decoration: none;\'>SkywarnPlus-NG</a>'
 
     enabled_text = f'<span style=\'color: SpringGreen;\'><b><u>{github_link} Enabled</u></b></span>'
     disabled_text = f'<span style=\'color: darkorange;\'><b><u>{github_link} Disabled</u></b></span>'
@@ -680,42 +674,11 @@ if __name__ == "__main__":
     wx_use_gps = resolve_weather_gps(wx_use_gps, wx_code)
     temp_unit = config.get("general", "TEMP_UNIT", fallback="F")
 
-    # API source selection:
-    # - SkywarnPlus-NG: [skywarnplus] MASTER_ENABLE / API_URL
-    # - CANWarn-NG:     [canwarn_ng] MASTER_ENABLE / API_URL
-    #
-    # Selection precedence:
-    #  1) If [general] ALERT_PROVIDER is set, use that provider.
-    #  2) Otherwise (back-compat), prefer [canwarn_ng] when present; else fall back to [skywarnplus].
-    #
-    # Optional [general] ALERT_PRODUCT = "CANWarn-NG"|"SkywarnPlus-NG" controls the label in the dashboard.
-    # ALERT_PRODUCT is optional and (historically) controlled the label shown on the dashboard.
-    # When ALERT_PROVIDER is explicitly set, we prefer to match the selected provider's branding.
-    product_name = config.get("general", "ALERT_PRODUCT", fallback="").strip()
-    provider = config.get("general", "ALERT_PROVIDER", fallback="").strip().lower()
+    # Alerts come from SkywarnPlus-NG via [skywarnplus] MASTER_ENABLE / API_URL.
+    master_enable = config.get("skywarnplus", "MASTER_ENABLE", fallback="no").strip()
+    api_url = config.get("skywarnplus", "API_URL", fallback="http://localhost:8100").strip()
 
-    if provider in ("canwarn", "canwarn-ng", "canwarn_ng"):
-        master_enable = config.get("canwarn_ng", "MASTER_ENABLE", fallback="no").strip()
-        api_url = config.get("canwarn_ng", "API_URL", fallback="http://localhost:8110").strip()
-        product_name = "CANWarn-NG"
-    elif provider in ("skywarnplus", "skywarnplus-ng", "skywarnplus_ng"):
-        master_enable = config.get("skywarnplus", "MASTER_ENABLE", fallback="no").strip()
-        api_url = config.get("skywarnplus", "API_URL", fallback="http://localhost:8100").strip()
-        product_name = "SkywarnPlus-NG"
-    else:
-        # Backward-compatible auto-detect
-        if config.has_section("canwarn_ng"):
-            master_enable = config.get("canwarn_ng", "MASTER_ENABLE", fallback="no").strip()
-            api_url = config.get("canwarn_ng", "API_URL", fallback="http://localhost:8110").strip()
-            if not product_name:
-                product_name = "CANWarn-NG"
-        else:
-            master_enable = config.get("skywarnplus", "MASTER_ENABLE", fallback="no").strip()
-            api_url = config.get("skywarnplus", "API_URL", fallback="http://localhost:8100").strip()
-            if not product_name:
-                product_name = "SkywarnPlus-NG"
-
-    print(f"[NodeStatus] ALERT_PRODUCT={product_name!r} API_URL={api_url!r} MASTER_ENABLE={master_enable!r} NODES={nodes}")
+    print(f"[NodeStatus] API_URL={api_url!r} MASTER_ENABLE={master_enable!r} NODES={nodes}")
 
     cpu_up = get_uptime()
     cpu_load = get_cpu_load()
@@ -747,7 +710,7 @@ if __name__ == "__main__":
         exit(0)
 
     print(f"[NodeStatus] Updating {len(node_list)} node(s): {', '.join(node_list)}")
-    alerts_map = get_alerts_from_api(api_url, master_enable, nodes=node_list, product_name=product_name)
+    alerts_map = get_alerts_from_api(api_url, master_enable, nodes=node_list)
     default_alert = alerts_map.get(node_list[0], "") if node_list else ""
 
     def _snippet(s: str, n: int = 72) -> str:

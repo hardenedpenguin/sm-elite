@@ -108,7 +108,7 @@ def node_info_ini(nodes: list[str], alerts: bool) -> str:
 ;
 ; Weather needs saytime-weather-rb (/usr/sbin/weather.rb): set WX_CODE to a ZIP
 ; or airport code and WX_LOCATION to the name to show, or set WX_USE_GPS = yes.
-; Alerts come from SkywarnPlus-NG or CANWarn-NG on this node.
+; Alerts come from SkywarnPlus-NG on this node.
 
 [general]
 NODE = {" ".join(nodes)}
@@ -116,15 +116,10 @@ WX_USE_GPS = no
 WX_CODE = 00000
 WX_LOCATION = City, State
 TEMP_UNIT = F
-ALERT_PROVIDER = skywarnplus
 
 [skywarnplus]
 MASTER_ENABLE = {"yes" if alerts else "no"}
 API_URL = http://127.0.0.1:8100
-
-[canwarn_ng]
-MASTER_ENABLE = no
-API_URL = http://127.0.0.1:8110
 """
 
 
