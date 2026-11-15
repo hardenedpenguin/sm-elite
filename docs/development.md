@@ -20,14 +20,16 @@ python3 -m unittest discover -s tests
 
 ```bash
 sudo apt install debhelper python3-aiohttp
-./deploy/build-deb.sh
+./deploy/build-deb.sh              # both suites
+./deploy/build-deb.sh bookworm     # Debian 12 only → dist/sm-elite_<ver>-1.deb12_all.deb
+./deploy/build-deb.sh trixie       # Debian 13 only → dist/sm-elite_<ver>-1.deb13_all.deb
 ```
 
-The `.deb` lands in `dist/`. The build runs the test suite first. Bump the version in both `debian/changelog` (`dch -v <version>`) and `smelite/__init__.py`; the script refuses to build when they differ.
+The `.deb` files land in `dist/`. The build runs the test suite first. Bump the upstream version in both `debian/changelog` (`dch -v <version>`) and `smelite/__init__.py`; the script refuses to build when they differ. At build time it rewrites the package version to `<ver>-1.deb12` or `<ver>-1.deb13` so the hardenedpenguin apt repo can put each build in the matching suite (`bookworm` or `trixie`).
 
 ## Releasing
 
-Push a tag that matches the changelog version, for example `git tag v0.2.8 && git push origin v0.2.8`. The Release workflow tests on Debian 12, builds on Debian 13, attaches the `.deb` to a GitHub release, and asks the hardenedpenguin apt repository to publish it. That last step needs the `APT_REPO_DISPATCH_TOKEN` repository secret; without it the release still succeeds and the apt repository picks the package up on its daily run.
+Push a tag that matches the changelog upstream version, for example `git tag v0.2.8 && git push origin v0.2.8`. The Release workflow tests and builds on Debian 12 and 13, attaches both suite `.deb` files to a GitHub release, and asks the hardenedpenguin apt repository to publish them. That last step needs the `APT_REPO_DISPATCH_TOKEN` repository secret; without it the release still succeeds and the apt repository picks the packages up on its daily run.
 
 ## Layout
 

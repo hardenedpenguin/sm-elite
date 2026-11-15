@@ -10,7 +10,15 @@ sudo apt update
 sudo apt install sm-elite
 ```
 
-The `.deb` is also attached to each [GitHub release](https://github.com/hardenedpenguin/sm-elite/releases) for `sudo apt install ./sm-elite_<version>_all.deb`.
+The `.deb` is also attached to each [GitHub release](https://github.com/hardenedpenguin/sm-elite/releases). Use the **`.deb12`** build on Debian 12 Bookworm and the **`.deb13`** build on Debian 13 Trixie:
+
+```bash
+# Bookworm (Debian 12):
+sudo apt install ./sm-elite_*.deb12_all.deb
+
+# Trixie (Debian 13):
+sudo apt install ./sm-elite_*.deb13_all.deb
+```
 
 Then open `http://<node>/sm-elite/`. On an ASL3 appliance, port 80 forwards to HTTPS, so you land on `https://<node>/sm-elite/`. The first visit asks you to create the admin account. That needs the one-time setup code the install prints, which is also in `/var/lib/sm-elite/setup-code` (`sudo cat` it), so nobody else who reaches the page first can claim the node.
 
