@@ -91,6 +91,7 @@ SM-Elite exists because these projects showed what a good AllStar dashboard look
 - **[AllScan](https://github.com/davidgsd/AllScan)** by David Gleason, NR9V, for favorites with live activity from the AllStar stats service.
 - **Supermon** by Tim Sawyer, WD6AWP, and later Paul Aidukas, KN2R, for the control bar, the `favorites.ini` format, and the node status block that every AllStar operator knows.
 - **[supermon-ng](https://github.com/hardenedpenguin/supermon-ng)** for carrying Supermon forward, and for the DVSwitch mode and talkgroup layout SM-Elite imports.
-- **[DVSwitch](https://dvswitch.org/)** by Mike Zingman, N4IRR, and Steve Zingman, N4IRS, for Analog_Bridge and MMDVM_Bridge.
+- **[dvswitch_mode_switcher](https://github.com/firealarmss/dvswitch_mode_switcher)** by firealarmss, for the mode and talkgroup switching approach SM-Elite follows on a bridged node.
 - **[Piper](https://github.com/rhasspy/piper)** by Michael Hansen and the Rhasspy project, for the text-to-speech voices behind Announce.
+- **[announcement-manager](https://github.com/n5ad/announcement-manager)** by N5AD, for the announcement upload, polite playback, and scheduling ideas behind Announce.
 - **[AllStarLink](https://www.allstarlink.org/)** and its volunteers, for the network and the ASL3 platform this runs on.
