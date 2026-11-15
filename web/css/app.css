@@ -13,6 +13,7 @@
   --playback: #ef7aa8;
   --idle: #6d8294;
   --linked: #3dbe86;
+  --keyed: #e39b2b;
   --danger: #e15d5d;
   --heat: #c4473a;
   --shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
@@ -294,7 +295,12 @@ table.heard th:last-child { text-align: right; }
 table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
 th, td { text-align: left; padding: 0.35rem 0.4rem; border-bottom: 1px solid var(--line); vertical-align: top; }
 th { color: var(--muted); font-weight: 600; font-size: 0.75rem; cursor: pointer; }
-tr.keyed td { background: color-mix(in srgb, var(--linked) 16%, transparent); }
+tr.keyed td {
+  background: color-mix(in srgb, var(--keyed) 24%, transparent);
+  color: var(--keyed);
+  font-weight: 650;
+}
+tr.keyed td.node { color: var(--keyed); font-weight: 700; }
 tr.connecting td { color: var(--muted); }
 tr.selected td { outline: 1px solid var(--accent); }
 td.node { color: var(--accent); cursor: pointer; }
@@ -321,6 +327,7 @@ td.node.linked { color: var(--linked); font-weight: 700; }
 .legend .playback { color: var(--playback); }
 .legend .heat { color: var(--heat); }
 .legend .linked { color: var(--linked); }
+.legend .keyed { color: var(--keyed); }
 .voter { margin: 0.45rem 0 0.7rem; }
 .bar { height: 0.7rem; background: var(--bg); border-radius: 99px; overflow: hidden; border: 1px solid var(--line); }
 .bar span { display: block; height: 100%; background: var(--network); }

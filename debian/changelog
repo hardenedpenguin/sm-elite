@@ -1,3 +1,11 @@
+sm-elite (0.2.18) unstable; urgency=medium
+
+  * Themes: Transmitting color for the keyed connection row on a node
+    card and the live last-heard row, so the talking node is easy to
+    spot and customize.
+
+ -- Jory A. Pratt <geekypenguin@gmail.com>  Sat, 14 Nov 2026 23:14:00 -0600
+
 sm-elite (0.2.17) unstable; urgency=medium
 
   * Ship separate Debian 12 (bookworm, .deb12) and Debian 13 (trixie,

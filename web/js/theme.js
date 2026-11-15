@@ -14,6 +14,7 @@ const THEME_COLORS = [
   { key: "telemetry", label: "Telemetry", group: "status" },
   { key: "playback", label: "Playback", group: "status" },
   { key: "linked", label: "Connected", group: "status" },
+  { key: "keyed", label: "Transmitting", group: "status" },
   { key: "heat", label: "Favorite activity", group: "status" },
   { key: "idle", label: "Idle", group: "status" },
   { key: "danger", label: "Warnings and errors", group: "status" },
@@ -21,7 +22,7 @@ const THEME_COLORS = [
 
 const STOCK_STATUS = {
   local: "#e39b2b", network: "#3db7e8", telemetry: "#b79af0", playback: "#ef7aa8",
-  linked: "#3dbe86", heat: "#c4473a", idle: "#6d8294", danger: "#e15d5d",
+  linked: "#3dbe86", keyed: "#e39b2b", heat: "#c4473a", idle: "#6d8294", danger: "#e15d5d",
 };
 
 const BUILT_IN_THEMES = [
@@ -44,7 +45,7 @@ const BUILT_IN_THEMES = [
     colors: {
       bg: "#172b6b", "bg-raise": "#1e3a8a", line: "#3b5fc4", text: "#ffffff", muted: "#bfd0f5",
       accent: "#60a5fa", "accent-ink": "#0b1b4a", local: "#f59e0b", network: "#22d3ee", telemetry: "#c4b5fd",
-      playback: "#f9a8d4", linked: "#34d399", heat: "#fb7185", idle: "#93a5c8", danger: "#f87171",
+      playback: "#f9a8d4", linked: "#34d399", keyed: "#f59e0b", heat: "#fb7185", idle: "#93a5c8", danger: "#f87171",
     },
   },
   {
@@ -52,7 +53,7 @@ const BUILT_IN_THEMES = [
     colors: {
       bg: "#053b2d", "bg-raise": "#065f46", line: "#0b8a68", text: "#ffffff", muted: "#a7e8cf",
       accent: "#34d399", "accent-ink": "#022c22", local: "#f59e0b", network: "#38bdf8", telemetry: "#c4b5fd",
-      playback: "#f9a8d4", linked: "#bef264", heat: "#fb923c", idle: "#8fb8a8", danger: "#f87171",
+      playback: "#f9a8d4", linked: "#bef264", keyed: "#f59e0b", heat: "#fb923c", idle: "#8fb8a8", danger: "#f87171",
     },
   },
   {
@@ -60,7 +61,7 @@ const BUILT_IN_THEMES = [
     colors: {
       bg: "#f5f5dc", "bg-raise": "#e8f4f0", line: "#7fb3a3", text: "#2d5a4a", muted: "#557a6c",
       accent: "#2d6e5c", "accent-ink": "#f5f5dc", local: "#b86200", network: "#1d6fa0", telemetry: "#7d3c98",
-      playback: "#b0306a", linked: "#1e7f46", heat: "#c0392b", idle: "#7f9a90", danger: "#a93226",
+      playback: "#b0306a", linked: "#1e7f46", keyed: "#b86200", heat: "#c0392b", idle: "#7f9a90", danger: "#a93226",
     },
   },
   {
@@ -68,7 +69,7 @@ const BUILT_IN_THEMES = [
     colors: {
       bg: "#000000", "bg-raise": "#1a0a2e", line: "#8a2be2", text: "#e0b0ff", muted: "#a884c8",
       accent: "#00ffff", "accent-ink": "#120020", local: "#ffaa00", network: "#00d4ff", telemetry: "#ff66ff",
-      playback: "#ff77cc", linked: "#00ff88", heat: "#ff5500", idle: "#6b5a80", danger: "#ff0066",
+      playback: "#ff77cc", linked: "#00ff88", keyed: "#ffaa00", heat: "#ff5500", idle: "#6b5a80", danger: "#ff0066",
     },
   },
 ];
@@ -82,7 +83,9 @@ function validColors(colors) {
   if (!colors || typeof colors !== "object") return null;
   const clean = {};
   for (const { key } of THEME_COLORS) {
-    const value = String(colors[key] || "").toLowerCase();
+    let value = String(colors[key] || "").toLowerCase();
+    // Older custom themes may lack keys added later; fill from the stock status colors.
+    if (!HEX_COLOR.test(value) && STOCK_STATUS[key]) value = STOCK_STATUS[key];
     if (!HEX_COLOR.test(value)) return null;
     clean[key] = value;
   }
@@ -180,7 +183,7 @@ function themePreview(colors) {
   panel.textContent = "Aa";
   const dots = document.createElement("span");
   dots.className = "theme-preview-dots";
-  for (const key of ["accent", "local", "network", "linked"]) {
+  for (const key of ["accent", "local", "network", "keyed"]) {
     const dot = document.createElement("i");
     dot.style.background = colors[key];
     dots.append(dot);

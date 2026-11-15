@@ -26,10 +26,15 @@ class CleanTests(unittest.TestCase):
 
     def test_bad_themes_are_refused(self):
         for bad in ("dark", {"id": "rainbow"}, {"id": "custom", "colors": {**COLORS, "text": "red"}},
-                    {"id": "custom", "colors": {key: value for key, value in COLORS.items() if key != "heat"}},
                     {"id": "custom", "colors": {**COLORS, "bg": "#fff;}body{"}}):
             with self.assertRaises(ValueError, msg=bad):
                 themes.clean(bad)
+
+    def test_missing_status_colors_use_defaults(self):
+        colors = {key: value for key, value in COLORS.items() if key != "keyed"}
+        cleaned = themes.clean({"id": "custom", "label": "Club", "colors": colors})
+        self.assertEqual(cleaned["colors"]["keyed"], themes.DEFAULT_COLORS["keyed"])
+        self.assertEqual(cleaned["colors"]["bg"], COLORS["bg"])
 
     def test_matches_the_browser_side(self):
         source = THEME_JS.read_text(encoding="utf-8")
