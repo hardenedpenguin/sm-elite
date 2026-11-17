@@ -12,8 +12,10 @@ sm-elite (0.2.18) unstable; urgency=medium
   * Control: clicking a connected peer on a node card (while logged in)
     selects that card's local node and puts the peer in Target;
     double-click still disconnects.
+  * Node status: fix NameError after dropping CANWarn-NG so the timer
+    can fetch SkywarnPlus-NG alerts again.
 
- -- Jory A. Pratt <geekypenguin@gmail.com>  Mon, 16 Nov 2026 19:32:00 -0600
+ -- Jory A. Pratt <geekypenguin@gmail.com>  Tue, 17 Nov 2026 07:10:00 -0600
 
 sm-elite (0.2.17) unstable; urgency=medium
 

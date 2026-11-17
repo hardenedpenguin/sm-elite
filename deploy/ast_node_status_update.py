@@ -449,6 +449,7 @@ def get_alerts_from_api(api_url, master_enable, nodes=None):
         Dict mapping node -> formatted HTML string (including quoted wrapper).
         Fallback key "" used for nodes not in alerts_by_node when using global fallback.
     """
+    product = "SkywarnPlus-NG"
     github_link = '<a href=\'https://github.com/hardenedpenguin/SkywarnPlus-NG\' style=\'color: inherit; text-decoration: none;\'>SkywarnPlus-NG</a>'
 
     enabled_text = f'<span style=\'color: SpringGreen;\'><b><u>{github_link} Enabled</u></b></span>'
