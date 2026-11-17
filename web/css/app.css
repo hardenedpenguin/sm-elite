@@ -162,7 +162,8 @@ dialog.wide { width: min(46rem, 94vw); }
 dialog.wider { width: min(64rem, 96vw); }
 fieldset.scope { border: 1px solid var(--line); border-radius: 6px; padding: 0.3rem 0.8rem; margin: 0.4rem 0 0.6rem; }
 fieldset.scope label { margin: 0.25rem 0; }
-dialog label.inline { flex-direction: row; align-items: center; gap: 0.4rem; margin: 0; }
+dialog label.inline { display: inline-flex; flex-direction: row; align-items: center; gap: 0.4rem; margin: 0 0 0.5rem; }
+#sounds-node { width: auto; min-width: 8rem; }
 .toasts { position: fixed; right: 1rem; bottom: 1rem; display: flex; flex-direction: column; gap: 0.5rem; z-index: 50; pointer-events: none; }
 .toast {
   background: var(--bg-raise);

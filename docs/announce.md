@@ -1,6 +1,6 @@
 # Announce
 
-Operators open **Announce** in the control bar to type text and play it with Piper text-to-speech, or to play a saved sound, on this node's radio only or on this node and every connected link. A saved sound can also be played by a [scheduled action](schedule.md).
+Operators open **Announce** in the control bar to type text and play it with Piper text-to-speech, or to play a saved sound, on this node's radio only or on this node and every connected link. When the account can control more than one node, a **Node** menu picks which local node to announce on (it starts on the control bar's local node). A saved sound can also be played by a [scheduled action](schedule.md).
 
 **When** picks how it plays:
 

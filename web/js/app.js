@@ -158,6 +158,21 @@ function chooseTarget(node, { connect = false } = {}) {
   if (connect && operator()) sendCommand("connect");
 }
 
+function setLocalNode(id) {
+  const node = String(id);
+  if (!canCommand(node)) return false;
+  state.local = node;
+  const select = document.querySelector("#local-node");
+  if (select && [...select.options].some((option) => option.value === node)) {
+    select.value = node;
+  }
+  return true;
+}
+
+function commandableNodes() {
+  return state.selected.filter(canCommand);
+}
+
 function renderChrome() {
   const boot = state.boot;
   $("site-title").textContent = boot.title || "SM-Elite";
@@ -247,7 +262,7 @@ function selectNodes(ids) {
 function renderControl() {
   const bar = $("control");
   bar.replaceChildren();
-  const mine = state.selected.filter(canCommand);
+  const mine = commandableNodes();
   bar.hidden = !mine.length;
   if (!mine.length) return;
   if (!mine.includes(state.local)) state.local = mine[0];
@@ -445,10 +460,19 @@ function renderSnapshot(snap) {
     if (!row) {
       row = document.createElement("tr");
       row.dataset.node = String(conn.node);
+      row.title = "Click to control this card and put the node in Target";
       row.innerHTML = "<td class='node'></td><td></td><td></td><td></td><td></td><td></td><td></td>";
-      row.addEventListener("click", () => chooseTarget(conn.node));
+      row.addEventListener("click", () => {
+        const peer = row.dataset.node;
+        const local = card.dataset.node;
+        if (operator()) setLocalNode(local);
+        chooseTarget(peer);
+      });
       row.addEventListener("dblclick", () => {
-        chooseTarget(conn.node);
+        const peer = row.dataset.node;
+        const local = card.dataset.node;
+        if (operator()) setLocalNode(local);
+        chooseTarget(peer);
         if (operator()) sendCommand("disconnect");
       });
       body.append(row);
@@ -1574,8 +1598,33 @@ function confirmScope(what) {
   return confirm(`Play ${what} on ${sounds_state.node} and every node linked to it?`);
 }
 
+function fillSoundsNodeSelect() {
+  const mine = commandableNodes();
+  const pick = document.querySelector("#sounds-node");
+  const wrap = document.querySelector("#sounds-node-wrap");
+  if (!pick || !wrap) return mine[0] || "";
+  const preferred = sounds_state.node || state.local || mine[0] || "";
+  const selected = mine.includes(preferred) ? preferred : (mine[0] || "");
+  pick.replaceChildren(...mine.map((id) => new Option(id, id, false, id === selected)));
+  wrap.hidden = mine.length < 2;
+  return selected;
+}
+
+function setSoundsNode(id) {
+  const node = String(id || "");
+  if (!node) return;
+  sounds_state.node = node;
+  setLocalNode(node);
+  $("sounds-title").textContent = `Announce on ${node}`;
+  const pick = document.querySelector("#sounds-node");
+  if (pick && pick.value !== node && [...pick.options].some((option) => option.value === node)) {
+    pick.value = node;
+  }
+}
+
 async function openSounds() {
-  const node = state.local || state.selected[0];
+  const mine = commandableNodes();
+  const node = (mine.includes(state.local) ? state.local : mine[0]) || state.selected[0];
   if (!node) return;
   try {
     sounds_state.info = await api("/api/sounds");
@@ -1584,8 +1633,9 @@ async function openSounds() {
     return;
   }
   sounds_state.node = node;
+  const chosen = fillSoundsNodeSelect() || node;
+  setSoundsNode(chosen);
   const info = sounds_state.info;
-  $("sounds-title").textContent = `Announce on ${node}`;
   $("tts").hidden = !info.tts;
   $("tts-off").hidden = info.tts;
   $("tts-save").hidden = !info.can_save;
@@ -1732,6 +1782,7 @@ async function uploadSound(event) {
 
 function wireSounds() {
   $("sounds-close").addEventListener("click", () => $("sounds-dialog").close());
+  $("sounds-node").addEventListener("change", (event) => setSoundsNode(event.target.value));
   $("tts-text").addEventListener("input", updateTtsCount);
   $("tts-speak").addEventListener("click", speakText);
   $("tts-save-btn").addEventListener("click", saveSound);

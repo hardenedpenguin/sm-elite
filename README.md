@@ -34,7 +34,7 @@ Everything is original code, apart from the node status updater, which comes fro
 ## Features
 
 - **Live node cards** with every connected link, direction, mode, and transmit state, plus the Supermon-style [status block](docs/node-status.md).
-- **Control bar**: connect, monitor, local monitor, disconnect, disconnect all, DTMF, and command templates from `commands.ini`. It shows only for operators and admins, and only lists the nodes their account may control.
+- **Control bar**: connect, monitor, local monitor, disconnect, disconnect all, DTMF, and command templates from `commands.ini`. It shows only for operators and admins, and only lists the nodes their account may control. Click a connected node on a card to select that card's local node and put the peer in Target; double-click disconnects it.
 - **Last heard**: who keyed up, on which node, and for how long, kept for 30 days. The panel shows the latest 5 by default.
 - **Display**: each browser picks which panels, node-card lines, and connection columns it shows, plus how many last heard rows. Handy for a kiosk screen that only needs the node cards.
 - **[Themes](docs/themes.md)**: dark, light, blue, green, seafoam, and neon purple, plus custom themes you build, share as a file, or set as the site default.

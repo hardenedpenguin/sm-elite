@@ -7,8 +7,13 @@ sm-elite (0.2.18) unstable; urgency=medium
     only weather-alert source.
   * Example favorites.ini lists common hubs (Parrot, Philadelphia, East
     Coast, Alaska, WIN, WAN, KC5HWB) with %node% connect commands.
+  * Announce: pick which local node to speak or play on when the account
+    can control more than one.
+  * Control: clicking a connected peer on a node card (while logged in)
+    selects that card's local node and puts the peer in Target;
+    double-click still disconnects.
 
- -- Jory A. Pratt <geekypenguin@gmail.com>  Sun, 15 Nov 2026 17:15:00 -0600
+ -- Jory A. Pratt <geekypenguin@gmail.com>  Mon, 16 Nov 2026 19:32:00 -0600
 
 sm-elite (0.2.17) unstable; urgency=medium
 
