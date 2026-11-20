@@ -1,3 +1,11 @@
+sm-elite (0.2.19) unstable; urgency=medium
+
+  * Favorites: clicking a favorite listed for a specific local node also
+    switches Local to that node before filling Target.
+  * Control: Disconnect first defaults to off.
+
+ -- Jory A. Pratt <geekypenguin@gmail.com>  Fri, 20 Nov 2026 06:34:00 -0600
+
 sm-elite (0.2.18) unstable; urgency=medium
 
   * Themes: Transmitting color for the keyed connection row on a node

@@ -13,7 +13,7 @@ const state = {
   target: "",
   local: "",
   permanent: false,
-  dropFirst: true,
+  dropFirst: false,
   sortKey: "file",
   sortDir: 1,
   socket: null,
@@ -167,6 +167,11 @@ function setLocalNode(id) {
     select.value = node;
   }
   return true;
+}
+
+function selectFavorite(item, { connect = false } = {}) {
+  if (item.only && operator()) setLocalNode(item.only);
+  chooseTarget(item.node, { connect });
 }
 
 function commandableNodes() {
@@ -675,8 +680,11 @@ function renderFavorites() {
     nodeCell.className = "node";
     nodeCell.textContent = item.node;
     if (linked.has(item.node)) nodeCell.classList.add("linked");
-    nodeCell.addEventListener("click", () => chooseTarget(item.node));
-    nodeCell.addEventListener("dblclick", () => chooseTarget(item.node, { connect: true }));
+    nodeCell.title = item.only
+      ? `Click to control local node ${item.only} and target ${item.node}`
+      : "Click to put this node in Target";
+    nodeCell.addEventListener("click", () => selectFavorite(item));
+    nodeCell.addEventListener("dblclick", () => selectFavorite(item, { connect: true }));
     const name = document.createElement("td");
     name.textContent = item.label || item.detail || "";
     if (item.only) {
