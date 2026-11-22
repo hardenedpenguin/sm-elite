@@ -1,3 +1,17 @@
+sm-elite (0.2.20) unstable; urgency=medium
+
+  * Header: Theme, Display, Touch, and Alerts move under a Settings menu;
+    Password, Users, System, Admin, and Log out under an Account menu named
+    for the signed-in user.
+  * Find a node: search requires login; the finder panel stays hidden until
+    then.
+  * Settings: admins set a site Disconnect first default that seeds the
+    control-bar checkbox for new sessions.
+  * Node nav: after focusing one node or group, further clicks add or remove
+    nodes so several cards can stay on screen together.
+
+ -- Jory A. Pratt <geekypenguin@gmail.com>  Sun, 22 Nov 2026 10:15:00 -0600
+
 sm-elite (0.2.19) unstable; urgency=medium
 
   * Favorites: clicking a favorite listed for a specific local node also
