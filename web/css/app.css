@@ -79,6 +79,49 @@ h2 { font-size: 1.1rem; }
 .tx-dot.live { background: var(--local); box-shadow: 0 0 0 4px color-mix(in srgb, var(--local) 20%, transparent); }
 #site-sub { color: var(--muted); font-size: 0.85rem; margin-top: 0.15rem; }
 .top-actions, .node-nav, .fav-tools, .dialog-actions { display: flex; flex-wrap: wrap; gap: 0.45rem; align-items: center; }
+.menu { position: relative; }
+.menu > summary {
+  list-style: none;
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-radius: 8px;
+  padding: 0.45rem 0.75rem;
+  cursor: pointer;
+  user-select: none;
+}
+.menu > summary::-webkit-details-marker { display: none; }
+.menu > summary::after {
+  content: " ▾";
+  font-size: 0.85em;
+  opacity: 0.85;
+}
+.menu[open] > summary { filter: brightness(1.08); }
+.menu-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.3rem);
+  min-width: 10.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.35rem;
+  background: var(--bg-raise);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  z-index: 40;
+}
+.menu-item {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  color: var(--text);
+  border: 0;
+  border-radius: 6px;
+  padding: 0.45rem 0.65rem;
+}
+.menu-item:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+#login-btn { background: transparent; color: var(--text); border: 1px solid var(--line); }
 .pill, .node-nav button {
   border: 1px solid var(--line);
   border-radius: 999px;

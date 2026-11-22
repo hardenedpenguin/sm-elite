@@ -66,6 +66,7 @@ def create_app(engine: Engine) -> web.Application:
     app.router.add_delete("/api/users/{name}", users_delete)
     app.router.add_post("/api/account/password", account_password)
     app.router.add_post("/api/site/theme", site_theme_set)
+    app.router.add_post("/api/site/disconnect-first", site_disconnect_first_set)
     app.router.add_get("/api/actions", actions_list)
     app.router.add_get("/api/favorites", favorites_get)
     app.router.add_post("/api/favorites", favorites_add)
@@ -285,6 +286,7 @@ async def bootstrap(request: web.Request) -> web.Response:
         "favorites": files,
         "commands": [{"label": item.label, "command": item.command} for item in settings.commands],
         "site_theme": _site_theme(engine),
+        "disconnect_first_default": _disconnect_first_default(engine),
     })
 
 
@@ -298,6 +300,11 @@ def _site_theme(engine: Engine) -> dict | None:
         return None
 
 
+def _disconnect_first_default(engine: Engine) -> bool:
+    raw = (engine.auth.get_setting("disconnect_first") or "").strip().lower()
+    return raw in {"1", "true", "yes", "on"}
+
+
 async def site_theme_set(request: web.Request) -> web.Response:
     if _require(request, "admin") is None:
         return web.json_response({"error": "admin required"}, status=401)
@@ -307,6 +314,17 @@ async def site_theme_set(request: web.Request) -> web.Response:
     engine.auth.set_setting("theme", None if theme is None else json.dumps(theme))
     _log(request, "set site theme", detail=themes.label(theme))
     return web.json_response({"site_theme": theme})
+
+
+async def site_disconnect_first_set(request: web.Request) -> web.Response:
+    if _require(request, "admin") is None:
+        return web.json_response({"error": "admin required"}, status=401)
+    engine: Engine = request.app["engine"]
+    body = await _json(request)
+    enabled = bool(body.get("enabled"))
+    engine.auth.set_setting("disconnect_first", "yes" if enabled else "no")
+    _log(request, "set disconnect first default", detail="on" if enabled else "off")
+    return web.json_response({"disconnect_first_default": enabled})
 
 
 def _host_facts() -> dict:
@@ -626,6 +644,11 @@ async def heard(request: web.Request) -> web.Response:
 
 
 async def directory_search(request: web.Request) -> web.Response:
+    if _require(request, "viewer") is None:
+        raise web.HTTPUnauthorized(
+            text=json.dumps({"error": "login required"}),
+            content_type="application/json",
+        )
     engine: Engine = request.app["engine"]
     query = request.query.get("q", "").strip()[:64]
     try:

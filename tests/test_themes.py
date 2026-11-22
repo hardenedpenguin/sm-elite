@@ -9,7 +9,7 @@ from aiohttp.test_utils import AioHTTPTestCase
 
 from smelite import themes
 from smelite.auth import AuthStore
-from smelite.server import site_theme_set
+from smelite.server import site_disconnect_first_set, site_theme_set
 
 THEME_JS = Path(__file__).resolve().parent.parent / "web" / "js" / "theme.js"
 COLORS = {key: "#123abc" for key in themes.COLOR_KEYS}
@@ -71,6 +71,7 @@ class SiteThemeTests(AioHTTPTestCase):
         app = web.Application(middlewares=[token_user])
         app["engine"] = self.engine
         app.router.add_post("/api/site/theme", site_theme_set)
+        app.router.add_post("/api/site/disconnect-first", site_disconnect_first_set)
         return app
 
     async def asyncTearDown(self):
@@ -94,6 +95,25 @@ class SiteThemeTests(AioHTTPTestCase):
         self.assertEqual((await self.post(self.ada, None)).status, 200)
         self.assertIsNone(self.engine.auth.get_setting("theme"))
         self.assertEqual([entry[2] for entry in self.recorded], ["Club", "stock dark"])
+
+    async def test_disconnect_first_default(self):
+        denied = await self.client.post(
+            "/api/site/disconnect-first", headers={"X-Token": self.op}, json={"enabled": True}
+        )
+        self.assertEqual(denied.status, 401)
+        on = await self.client.post(
+            "/api/site/disconnect-first", headers={"X-Token": self.ada}, json={"enabled": True}
+        )
+        self.assertEqual(on.status, 200)
+        self.assertTrue((await on.json())["disconnect_first_default"])
+        self.assertEqual(self.engine.auth.get_setting("disconnect_first"), "yes")
+        off = await self.client.post(
+            "/api/site/disconnect-first", headers={"X-Token": self.ada}, json={"enabled": False}
+        )
+        self.assertEqual(off.status, 200)
+        self.assertFalse((await off.json())["disconnect_first_default"])
+        self.assertEqual(self.engine.auth.get_setting("disconnect_first"), "no")
+        self.assertEqual([entry[2] for entry in self.recorded if entry[1] == "set disconnect first default"], ["on", "off"])
 
 
 if __name__ == "__main__":

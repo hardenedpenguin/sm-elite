@@ -23,14 +23,26 @@
     </div>
     <div class="top-actions">
       <span id="health" class="pill">…</span>
-      <button id="theme-btn" type="button">Theme</button>
-      <button id="touch-btn" type="button">Touch</button>
-      <button id="display-btn" type="button">Display</button>
-      <button id="users-btn" type="button" hidden>Users</button>
-      <button id="alerts-btn" type="button">Alerts</button>
-      <button id="system-btn" type="button" hidden>System</button>
-      <button id="admin-btn" type="button" hidden>Admin</button>
-      <button id="account-btn" type="button" hidden>Account</button>
+      <details class="menu" id="settings-menu">
+        <summary>Settings</summary>
+        <div class="menu-panel" role="menu">
+          <button id="theme-btn" type="button" class="menu-item" role="menuitem">Theme</button>
+          <button id="display-btn" type="button" class="menu-item" role="menuitem">Display</button>
+          <button id="touch-btn" type="button" class="menu-item" role="menuitem">Touch</button>
+          <button id="alerts-btn" type="button" class="menu-item" role="menuitem">Alerts</button>
+          <button id="disconnect-first-btn" type="button" class="menu-item" role="menuitem" hidden>Disconnect first: off</button>
+        </div>
+      </details>
+      <details class="menu" id="account-menu" hidden>
+        <summary id="account-menu-label">Account</summary>
+        <div class="menu-panel" role="menu">
+          <button id="account-btn" type="button" class="menu-item" role="menuitem">Password</button>
+          <button id="users-btn" type="button" class="menu-item" role="menuitem" hidden>Users</button>
+          <button id="system-btn" type="button" class="menu-item" role="menuitem" hidden>System</button>
+          <button id="admin-btn" type="button" class="menu-item" role="menuitem" hidden>Admin</button>
+          <button id="logout-btn" type="button" class="menu-item" role="menuitem">Log out</button>
+        </div>
+      </details>
       <button id="login-btn" type="button">Log in</button>
     </div>
   </header>

@@ -178,6 +178,14 @@ function commandableNodes() {
   return state.selected.filter(canCommand);
 }
 
+function loggedIn() {
+  return Boolean(state.boot?.user);
+}
+
+function closeMenus() {
+  for (const menu of document.querySelectorAll("details.menu[open]")) menu.open = false;
+}
+
 function renderChrome() {
   const boot = state.boot;
   $("site-title").textContent = boot.title || "SM-Elite";
@@ -185,16 +193,20 @@ function renderChrome() {
   $("site-sub").textContent = bits.join(" · ");
   $("welcome").textContent = boot.welcome || "";
   document.title = boot.title || "SM-Elite";
-  const login = $("login-btn");
-  if (boot.user) {
-    login.textContent = `Log out ${boot.user.name}`;
-  } else {
-    login.textContent = "Log in";
+  const signedIn = Boolean(boot.user);
+  $("login-btn").hidden = signedIn;
+  $("account-menu").hidden = !signedIn;
+  if (signedIn) {
+    $("account-menu-label").textContent = boot.user.name;
   }
   $("users-btn").hidden = boot.user?.role !== "admin";
-  $("account-btn").hidden = !boot.user;
   $("admin-btn").hidden = boot.user?.role !== "admin" || !boot.admin_tools;
   $("system-btn").hidden = !["operator", "admin"].includes(boot.user?.role);
+  const dropDefault = Boolean(boot.disconnect_first_default);
+  const dropBtn = $("disconnect-first-btn");
+  dropBtn.hidden = boot.user?.role !== "admin";
+  dropBtn.textContent = `Disconnect first: ${dropDefault ? "on" : "off"}`;
+  dropBtn.title = "Site default for the control bar checkbox. Operators can still change it for their session.";
   $("setup-code-wrap").hidden = !boot.setup_code_file;
   $("setup-code").required = Boolean(boot.setup_code_file);
   $("setup-code-cmd").textContent = boot.setup_code_file ? `sudo cat ${boot.setup_code_file}` : "";
@@ -211,6 +223,7 @@ function renderChrome() {
     banner.append(open);
     banner.append(" when you want to control it.");
   }
+  applyDisplay();
   renderNav();
   renderControl();
 }
@@ -234,14 +247,33 @@ function renderNav() {
   for (const item of buttons) {
     const button = document.createElement("button");
     button.type = "button";
-    const on = sameNodes(item.ids, state.selected);
+    const on = !showingAll && item.ids.every((id) => state.selected.includes(id));
     button.className = on ? "on" : "";
     button.setAttribute("aria-pressed", String(on));
     button.textContent = item.label;
-    if (on && !showingAll) button.title = "Click again to show all nodes";
-    button.addEventListener("click", () => selectNodes(on ? all : item.ids));
+    if (showingAll) {
+      button.title = item.ids.length === 1 ? "Show only this node" : "Show only these nodes";
+    } else if (on) {
+      button.title = "Remove from the nodes shown";
+    } else {
+      button.title = "Add to the nodes shown";
+    }
+    button.addEventListener("click", () => toggleNavNodes(item.ids));
     nav.append(button);
   }
+}
+
+function toggleNavNodes(ids) {
+  const all = allNodeIds();
+  if (sameNodes(state.selected, all)) {
+    selectNodes(ids);
+    return;
+  }
+  const fullyOn = ids.every((id) => state.selected.includes(id));
+  const next = fullyOn
+    ? state.selected.filter((id) => !ids.includes(id))
+    : [...state.selected, ...ids];
+  selectNodes(next.length ? next : all);
 }
 
 function allNodeIds() {
@@ -1251,8 +1283,12 @@ function saveDisplay() {
 
 function applyDisplay() {
   for (const [, parts] of DISPLAY_PARTS) {
-    for (const [key] of parts) document.body.classList.toggle(`hide-${key}`, display.hidden.has(key));
+    for (const [key] of parts) {
+      const hide = display.hidden.has(key) || (key === "finder" && !loggedIn());
+      document.body.classList.toggle(`hide-${key}`, hide);
+    }
   }
+  $("finder").hidden = !loggedIn();
 }
 
 function openDisplay() {
@@ -1265,6 +1301,7 @@ function openDisplay() {
     legend.textContent = group;
     set.append(legend);
     for (const [key, label] of parts) {
+      if (key === "finder" && !loggedIn()) continue;
       const wrap = document.createElement("label");
       wrap.className = "check";
       const box = document.createElement("input");
@@ -1359,15 +1396,33 @@ async function refreshHealth() {
   }
 }
 
-function wireDialogs() {
-  $("login-btn").addEventListener("click", async () => {
-    if (state.boot.user) {
-      await api("/api/logout", { method: "POST", body: {} });
-      location.reload();
-      return;
+function wireMenus() {
+  document.addEventListener("click", (event) => {
+    for (const menu of document.querySelectorAll("details.menu[open]")) {
+      if (!menu.contains(event.target)) menu.open = false;
     }
+  });
+  for (const menu of document.querySelectorAll("details.menu")) {
+    menu.addEventListener("toggle", () => {
+      if (!menu.open) return;
+      for (const other of document.querySelectorAll("details.menu[open]")) {
+        if (other !== menu) other.open = false;
+      }
+    });
+  }
+  for (const item of document.querySelectorAll(".menu-item")) {
+    item.addEventListener("click", () => closeMenus());
+  }
+}
+
+function wireDialogs() {
+  $("login-btn").addEventListener("click", () => {
     $("login-error").textContent = "";
     $("login-dialog").showModal();
+  });
+  $("logout-btn").addEventListener("click", async () => {
+    await api("/api/logout", { method: "POST", body: {} });
+    location.reload();
   });
   $("login-cancel").addEventListener("click", () => $("login-dialog").close());
   $("setup-later").addEventListener("click", () => $("setup-dialog").close());
@@ -1397,6 +1452,22 @@ function wireDialogs() {
   $("touch-btn").addEventListener("click", () => {
     document.body.classList.toggle("touch");
     localStorage.setItem("smelite-touch", document.body.classList.contains("touch") ? "1" : "0");
+  });
+  $("disconnect-first-btn").addEventListener("click", async () => {
+    const next = !state.boot.disconnect_first_default;
+    try {
+      const data = await api("/api/site/disconnect-first", { method: "POST", body: { enabled: next } });
+      state.boot.disconnect_first_default = Boolean(data.disconnect_first_default);
+      state.dropFirst = state.boot.disconnect_first_default;
+      renderChrome();
+      renderControl();
+      showResult(
+        "Settings",
+        `Disconnect first default is now ${state.boot.disconnect_first_default ? "on" : "off"}.`,
+      );
+    } catch (error) {
+      showResult("Settings", error.message);
+    }
   });
   $("users-btn").addEventListener("click", openUsers);
   $("users-close").addEventListener("click", () => $("users-dialog").close());
@@ -2858,6 +2929,7 @@ async function boot() {
   if (localStorage.getItem("smelite-touch") === "1") document.body.classList.add("touch");
   loadDisplay();
   state.boot = await api("/api/bootstrap");
+  state.dropFirst = Boolean(state.boot.disconnect_first_default);
   const hash = location.hash.replace("#", "");
   const known = new Set((state.boot.nodes || []).map((node) => node.id));
   const fromHash = hash.split(",").map((part) => part.trim()).filter((id) => known.has(id));
@@ -2865,6 +2937,7 @@ async function boot() {
   state.local = state.selected[0] || "";
   state.favFile = (state.boot.favorites || [])[0] || "favorites.ini";
   renderChrome();
+  wireMenus();
   wireDialogs();
   wireDisplay();
   wireThemes();

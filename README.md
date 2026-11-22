@@ -38,7 +38,7 @@ Everything is original code, apart from the node status updater, which comes fro
 - **Last heard**: who keyed up, on which node, and for how long, kept for 30 days. The panel shows the latest 5 by default.
 - **Display**: each browser picks which panels, node-card lines, and connection columns it shows, plus how many last heard rows. Handy for a kiosk screen that only needs the node cards.
 - **[Themes](docs/themes.md)**: dark, light, blue, green, seafoam, and neon purple, plus custom themes you build, share as a file, or set as the site default.
-- **Find a node**: search the AllStar node directory by callsign, city, hub name, or number, with your own [private node names](docs/node-names.md) mixed in.
+- **Find a node**: after login, search the AllStar node directory by callsign, city, hub name, or number, with your own [private node names](docs/node-names.md) mixed in. Theme, Display, Touch, and Alerts live under **Settings**; account tools under your name.
 - **Favorites** from a Supermon `favorites.ini`, with live activity for each favorite.
 - **Link map**: a diagram of each node's connections, folded into its card.
 - **Who can connect**: edit the node's allow and deny lists, and drop a denied node that is linked right now.
