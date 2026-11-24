@@ -11,6 +11,7 @@ the browser holds.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 import os
@@ -106,6 +107,10 @@ def _verify_password(password: str, stored: str) -> bool:
     salt = bytes.fromhex(salt_hex)
     digest = hashlib.scrypt(password.encode("utf-8"), salt=salt, n=2**14, r=8, p=1, dklen=32)
     return hmac.compare_digest(digest.hex(), digest_hex)
+
+
+# Checked against when the username is unknown, so a miss costs as long as a hit.
+_DUMMY_HASH = _hash_password(secrets.token_urlsafe(16))
 
 
 class AuthStore(SQLiteStore):
@@ -212,11 +217,36 @@ class AuthStore(SQLiteStore):
 
     def verify(self, name: str, password: str) -> User | None:
         row = self._db.execute("SELECT * FROM users WHERE name = ?", (name,)).fetchone()
-        if row is None or not _verify_password(password, row["password"]):
+        ok = _verify_password(password, row["password"] if row is not None else _DUMMY_HASH)
+        if row is None or not ok:
             return None
         return self._user_from_row(row)
 
+    async def verify_async(self, name: str, password: str) -> User | None:
+        """verify() with the scrypt work on a thread, so websockets keep flowing.
+
+        The database is only touched on the event loop thread.
+        """
+        row = self._db.execute("SELECT * FROM users WHERE name = ?", (name,)).fetchone()
+        stored = row["password"] if row is not None else _DUMMY_HASH
+        ok = await asyncio.to_thread(_verify_password, password, stored)
+        if row is None or not ok:
+            return None
+        # The account may have been removed, reset, or changed while the hash ran.
+        current = self._db.execute("SELECT * FROM users WHERE name = ?", (name,)).fetchone()
+        if current is None or current["password"] != stored:
+            return None
+        return self._user_from_row(current)
+
+    def prune_sessions(self, now: int | None = None) -> int:
+        """Delete sessions that have expired; returns how many went."""
+        now = int(time.time()) if now is None else now
+        cur = self._db.execute("DELETE FROM sessions WHERE expires <= ?", (now,))
+        self._db.commit()
+        return cur.rowcount
+
     def create_session(self, user: User) -> str:
+        self.prune_sessions()
         token = secrets.token_urlsafe(32)
         self._db.execute(
             "INSERT INTO sessions (token, username, expires) VALUES (?, ?, ?)",

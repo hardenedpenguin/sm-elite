@@ -22,6 +22,8 @@ API_URL = http://127.0.0.1:8100
 - Alerts come from [SkywarnPlus-NG](https://github.com/hardenedpenguin/SkywarnPlus-NG). The install turns SkywarnPlus-NG alerts on when that package is installed.
 - `TEMP_UNIT` is `F` or `C`.
 
+The updater runs as the `asterisk` user, the same account Asterisk runs as on ASL3, so it needs no root access. A weather script it calls must be runnable by that user, as it already is when `rpt.conf` calls it.
+
 Edit it on the Admin page (Config files, then `node_info.ini`); saving there runs the updater right away. Changes made from a shell apply on the next run, or run it now with `sudo systemctl start sm-elite-node-status`. Its output is in `journalctl -u sm-elite-node-status`.
 
 While supermon-ng is installed with its own status timer on, SM-Elite's updater skips each run and leaves the job to supermon-ng. After supermon-ng is removed, SM-Elite's copy of its `node_info.ini` takes over.

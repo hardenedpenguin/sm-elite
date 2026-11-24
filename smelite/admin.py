@@ -41,6 +41,51 @@ def _stamp_iso(stamp: str) -> str:
     return when.isoformat()
 
 
+def tail_lines(path: Path, lines: int, block: int = 64 * 1024) -> str:
+    """The last ``lines`` lines of a file, read backwards from the end.
+
+    The Asterisk log can be hundreds of megabytes, so it is never read whole.
+    """
+    with path.open("rb") as handle:
+        handle.seek(0, 2)
+        end = handle.tell()
+        blocks: list[bytes] = []
+        newlines = 0
+        while end > 0 and newlines <= lines:
+            start = max(0, end - block)
+            handle.seek(start)
+            chunk = handle.read(end - start)
+            blocks.append(chunk)
+            newlines += chunk.count(b"\n")
+            end = start
+    text = b"".join(reversed(blocks)).decode("utf-8", errors="replace")
+    return "".join(deque(text.splitlines(keepends=True), maxlen=lines))
+
+
+STOP_WAIT = 5.0
+
+
+async def _stop(proc: asyncio.subprocess.Process, wait: float = STOP_WAIT) -> None:
+    """End a timed-out helper in bounded time.
+
+    SIGTERM comes first because sudo relays it to the root helper; SIGKILL
+    would only end sudo and leave the helper holding the pipes. Each wait is
+    capped, since on some Python versions wait() also waits for every process
+    holding stdout or stderr to let go.
+    """
+    for send in (proc.terminate, proc.kill):
+        try:
+            send()
+        except (ProcessLookupError, PermissionError):
+            return
+        try:
+            await asyncio.wait_for(proc.wait(), wait)
+            return
+        except asyncio.TimeoutError:
+            continue
+    log.warning("admin helper pid %s did not exit after SIGTERM and SIGKILL", proc.pid)
+
+
 class AdminError(ValueError):
     """An admin request was refused."""
 
@@ -222,7 +267,7 @@ class AdminTools:
         try:
             out, err = await asyncio.wait_for(proc.communicate(stdin or b""), timeout=30)
         except asyncio.TimeoutError as exc:
-            proc.kill()
+            await _stop(proc)
             raise AdminError("admin helper timed out") from exc
         if proc.returncode != 0:
             message = err.decode(errors="replace").strip() or f"admin helper failed ({proc.returncode})"
@@ -234,7 +279,6 @@ class AdminTools:
             return "[demo] Asterisk log lines appear here on a real node."
         lines = max(20, min(lines, 2000))
         try:
-            with self.log_file.open("r", encoding="utf-8", errors="replace") as handle:
-                return "".join(deque(handle, maxlen=lines))
+            return tail_lines(self.log_file, lines)
         except OSError as exc:
             raise AdminError(f"cannot read {self.log_file}: {exc.strerror}") from exc

@@ -2,8 +2,9 @@
 """Publish uptime, load, temperature, weather, disk, and weather alerts as
 app_rpt variables, which the node status block on each SM-Elite card shows.
 
-From supermon-ng (MIT, Jory A. Pratt), run by sm-elite-node-status.timer.
-Settings: /etc/sm-elite/node_info.ini (override with SMELITE_NODE_INFO).
+From supermon-ng (MIT, Jory A. Pratt), run by sm-elite-node-status.timer as
+the asterisk user. Settings: /etc/sm-elite/node_info.ini (override with
+SMELITE_NODE_INFO).
 """
 
 import os
@@ -594,8 +595,39 @@ def _rpt_conf_exists():
     return os.path.isfile("/etc/asterisk/rpt.conf")
 
 
+NODE_RE = re.compile(r"^[0-9]{1,8}$")
+
+
+def clean_nodes(values):
+    """Node numbers from [general] NODE, in order, without repeats.
+
+    The dashboard admin can edit node_info.ini and the values reach the
+    Asterisk CLI, so anything that is not a plain node number is dropped here.
+    """
+    found = []
+    for value in values:
+        text = str(value or "").strip()
+        if not text:
+            continue
+        if not NODE_RE.fullmatch(text):
+            print(f"[NodeStatus] Ignoring {text!r} in NODE: not a node number")
+            continue
+        if text not in found:
+            found.append(text)
+    return found
+
+
+def alert_command(node, alert):
+    """The Asterisk CLI command that sets ALERT, with quotes and backslashes escaped."""
+    escaped = str(alert).rstrip("\n").replace("\\", "\\\\").replace('"', '\\"')
+    return f'rpt set variable {node} ALERT="{escaped}"'
+
+
 def update_node_variables(node, cpu_up, cpu_load, cpu_temp_dsp, wx, disk_usage, alert):
     """Update RPT variables for a node. Returns 'ok', 'skip_rpt', 'error_vars', or 'error_alert'."""
+    if not NODE_RE.fullmatch(str(node)):
+        print(f"Invalid Node {node!r}: not a node number")
+        return "skip_rpt"
     # Match section headers: [546051] or [546051](node-main) etc. at line start
     check_node_command = ["grep", "-qE", rf"^[[:blank:]]*\[{re.escape(str(node))}\]([[:blank:]]*\([^)]*\))?[[:blank:]]*$", "/etc/asterisk/rpt.conf"]
     process_check = subprocess.run(check_node_command, capture_output=True, text=True)
@@ -621,30 +653,11 @@ def update_node_variables(node, cpu_up, cpu_load, cpu_temp_dsp, wx, disk_usage, 
         return "error_vars"
     print(f"Updated Variables Node {node} using rpt set variable")
 
-    import tempfile
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as tmp_alert_file:
-        tmp_alert_file.write(alert)
-        alert_file_path = tmp_alert_file.name
-
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.sh', delete=False) as tmp_script:
-        tmp_script.write(f'''#!/bin/bash
-set -e
-ALERT_RAW=$(cat "{alert_file_path}")
-ALERT_ESC=$(printf %s "$ALERT_RAW" | sed 's/\\\\/\\\\\\\\/g; s/"/\\\\"/g')
-/usr/sbin/asterisk -rx "rpt set variable {node} ALERT=\\"$ALERT_ESC\\""
-rm -f "{alert_file_path}"
-''')
-        script_path = tmp_script.name
-
-    try:
-        os.chmod(script_path, 0o755)
-        result_alert = subprocess.run(['bash', script_path], capture_output=True, text=True, check=False)
-    finally:
-        for path in (script_path, alert_file_path):
-            try:
-                os.unlink(path)
-            except Exception:
-                pass
+    # Pass the alert as one argv entry; no shell ever sees it or the node number.
+    result_alert = subprocess.run(
+        ["/usr/sbin/asterisk", "-rx", alert_command(node, alert)],
+        capture_output=True, text=True, check=False,
+    )
     if result_alert.returncode != 0:
         print(f"Error setting ALERT for node {node}: return code {result_alert.returncode}")
         if result_alert.stderr:
@@ -689,15 +702,7 @@ if __name__ == "__main__":
     wx = get_weather(wx_code, wx_location, use_gps=wx_use_gps)
     disk_usage_info = get_disk_usage()
 
-    node_list = []
-    seen = set()
-    for n in nodes:
-        if not n or not str(n).strip():
-            continue
-        s = str(n).strip()
-        if s not in seen:
-            seen.add(s)
-            node_list.append(s)
+    node_list = clean_nodes(nodes)
 
     if not node_list:
         _debug_log("exit early: no nodes configured")

@@ -453,7 +453,10 @@ def main(argv: list[str]) -> int:
     data.mkdir(parents=True, exist_ok=True)
     entry = pwd.getpwnam(args.user)
     os.chown(conf, 0, entry.pw_gid)
-    os.chmod(conf, 0o750)
+    # 0751: the node status updater runs as asterisk and must reach the
+    # world-readable node_info.ini; others can enter but not list, and the
+    # private files stay 0640.
+    os.chmod(conf, 0o751)
     os.chown(data, entry.pw_uid, entry.pw_gid)
     os.chmod(data, 0o750)
 
