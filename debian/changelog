@@ -1,3 +1,22 @@
+sm-elite (0.2.21) unstable; urgency=medium
+
+  * Node status: stop building a shell script from node_info.ini NODE values;
+    only node numbers are accepted, and ALERT uses a plain asterisk -rx call.
+  * Node status: run the timer as the asterisk user with systemd sandboxing
+    so a bad node_info.ini cannot gain more than Asterisk already can.
+  * Security: check passwords off the event loop, equalize timing for unknown
+    usernames, serialize failed-login counting, and re-check the hash after
+    verify so a mid-login password reset cannot leave a stale session.
+  * Monitoring: cool down a dead AMI host for 15 seconds and poll hosts side
+    by side so one unreachable Asterisk no longer freezes the other cards.
+  * Web: refuse cross-site websocket handshakes; send nosniff, frame,
+    referrer, and Content-Security-Policy headers from the app itself.
+  * Admin helper: bound timeout cleanup so a stuck child cannot hang the
+    request past the helper deadline.
+  * CI: run the unit tests on every push and pull request.
+
+ -- Jory A. Pratt <geekypenguin@gmail.com>  Mon, 23 Nov 2026 20:53:00 -0600
+
 sm-elite (0.2.20) unstable; urgency=medium
 
   * Header: Theme, Display, Touch, and Alerts move under a Settings menu;
