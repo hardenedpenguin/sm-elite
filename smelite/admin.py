@@ -59,6 +59,30 @@ def tail_lines(path: Path, lines: int, block: int = 64 * 1024) -> str:
     return "".join(deque(text.splitlines(keepends=True), maxlen=lines))
 
 
+STOP_WAIT = 5.0
+
+
+async def _stop(proc: asyncio.subprocess.Process, wait: float = STOP_WAIT) -> None:
+    """End a timed-out helper in bounded time.
+
+    SIGTERM comes first because sudo relays it to the root helper; SIGKILL
+    would only end sudo and leave the helper holding the pipes. Each wait is
+    capped, since on some Python versions wait() also waits for every process
+    holding stdout or stderr to let go.
+    """
+    for send in (proc.terminate, proc.kill):
+        try:
+            send()
+        except (ProcessLookupError, PermissionError):
+            return
+        try:
+            await asyncio.wait_for(proc.wait(), wait)
+            return
+        except asyncio.TimeoutError:
+            continue
+    log.warning("admin helper pid %s did not exit after SIGTERM and SIGKILL", proc.pid)
+
+
 class AdminError(ValueError):
     """An admin request was refused."""
 
@@ -240,8 +264,7 @@ class AdminTools:
         try:
             out, err = await asyncio.wait_for(proc.communicate(stdin or b""), timeout=30)
         except asyncio.TimeoutError as exc:
-            proc.kill()
-            await proc.wait()
+            await _stop(proc)
             raise AdminError("admin helper timed out") from exc
         if proc.returncode != 0:
             message = err.decode(errors="replace").strip() or f"admin helper failed ({proc.returncode})"

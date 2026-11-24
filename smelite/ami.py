@@ -17,7 +17,11 @@ class AmiError(Exception):
     """The manager connection failed or rejected a command."""
 
 
-class AmiDown(AmiError):
+class AmiNotSent(AmiError):
+    """No connection, so the command never reached Asterisk."""
+
+
+class AmiDown(AmiNotSent):
     """The host failed to connect a moment ago and is not being retried yet."""
 
 
@@ -168,9 +172,9 @@ class AmiPool:
                     raise AmiDown(f"AMI at {host['host']}:{host['port']} is down; retrying shortly")
                 try:
                     client = await AmiClient.connect(host["host"], int(host["port"]), host["user"], host["password"])
-                except AmiError:
+                except AmiError as exc:
                     self._down[key] = time.monotonic()
-                    raise
+                    raise AmiNotSent(str(exc)) from exc
                 self._down.pop(key, None)
                 self._clients[key] = client
             try:

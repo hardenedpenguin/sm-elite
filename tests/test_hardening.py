@@ -222,5 +222,148 @@ class WebHardeningTests(AioHTTPTestCase):
         self.engine.run_command.assert_awaited_once()
 
 
+
+class VerifyRaceTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.auth = AuthStore(Path(self.tmp.name) / "smelite.db")
+        self.auth.create_user("op", "old password", "operator")
+
+    def tearDown(self):
+        self.auth.close()
+        self.tmp.cleanup()
+
+    async def verify_while(self, change):
+        real = asyncio.to_thread
+
+        async def to_thread(func, *args):
+            result = await real(func, *args)
+            change()
+            return result
+
+        with mock.patch("smelite.auth.asyncio.to_thread", to_thread):
+            return await self.auth.verify_async("op", "old password")
+
+    async def test_reset_during_the_check_fails_the_old_password(self):
+        self.assertIsNone(await self.verify_while(lambda: self.auth.set_password("op", "new password")))
+
+    async def test_removed_during_the_check_fails(self):
+        self.assertIsNone(await self.verify_while(lambda: self.auth.delete_user("op")))
+
+    async def test_role_change_during_the_check_uses_the_current_row(self):
+        user = await self.verify_while(lambda: self.auth.update_user("op", "viewer", ["1998"]))
+        self.assertEqual((user.role, user.nodes), ("viewer", ("1998",)))
+
+
+class ParallelLoginTests(AioHTTPTestCase):
+    async def get_application(self):
+        from smelite.server import account_password, login
+
+        async def slow_wrong(name, password):
+            await asyncio.sleep(0.05)
+            return None if password != "right" else User(name, "operator", None)
+
+        self.engine = SimpleNamespace(
+            login_failures={},
+            auth=SimpleNamespace(
+                verify_async=slow_wrong,
+                get_user=lambda name: None,
+                set_password=lambda *args, **kwargs: None,
+            ),
+            record=lambda *args, **kwargs: None,
+        )
+
+        @web.middleware
+        async def session(request, handler):
+            request["user"] = User("op", "operator", None) if request.path == "/password" else None
+            request["token"] = "t"
+            return await handler(request)
+
+        app = web.Application(middlewares=[session])
+        app["engine"] = self.engine
+        app.router.add_post("/login", login)
+        app.router.add_post("/password", account_password)
+        return app
+
+    async def test_parallel_failures_each_count(self):
+        responses = await asyncio.gather(*(
+            self.client.post("/login", json={"username": "op", "password": "guess"}) for _ in range(20)
+        ))
+        statuses = sorted(response.status for response in responses)
+        self.assertEqual(statuses.count(401), 8)
+        self.assertEqual(statuses.count(429), 12)
+        self.assertEqual(len(self.engine.login_failures["127.0.0.1"]), 8)
+
+    async def test_parallel_password_checks_each_count(self):
+        responses = await asyncio.gather(*(
+            self.client.post("/password", json={"current": "guess", "password": "x" * 8}) for _ in range(12)
+        ))
+        self.assertEqual(sorted(r.status for r in responses).count(403), 8)
+
+    async def test_right_password_gives_its_slot_back(self):
+        response = await self.client.post("/password", json={"current": "right", "password": "x" * 8})
+        self.assertEqual(response.status, 200)
+        self.assertEqual(self.engine.login_failures.get("127.0.0.1"), [])
+
+
+class HelperStopTests(unittest.IsolatedAsyncioTestCase):
+    async def test_stop_is_bounded_when_a_child_keeps_the_pipes(self):
+        import os
+        import signal
+
+        from smelite.admin import _stop
+
+        # The shell ignores SIGTERM, and its child keeps stdout open after SIGKILL,
+        # like sudo and the root helper.
+        proc = await asyncio.create_subprocess_exec(
+            "sh", "-c", 'trap "" TERM; sleep 20; :',
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, start_new_session=True,
+        )
+        try:
+            started = time.monotonic()
+            await _stop(proc, wait=0.3)
+            self.assertLess(time.monotonic() - started, 2)
+        finally:
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+
+    async def test_helper_timeout_raises_admin_error(self):
+        from smelite.admin import AdminError, AdminTools
+
+        tools = AdminTools(True, Path("/nonexistent"), Path("/nonexistent"), "/nonexistent")
+        proc = mock.Mock(pid=1, terminate=mock.Mock(), kill=mock.Mock())
+        proc.communicate = mock.AsyncMock(side_effect=asyncio.TimeoutError)
+        proc.wait = mock.AsyncMock(return_value=0)
+        with mock.patch("smelite.admin.asyncio.create_subprocess_exec", mock.AsyncMock(return_value=proc)):
+            with self.assertRaises(AdminError):
+                await tools.run_helper(["check"])
+        proc.terminate.assert_called_once()
+
+
+class RestartResultTests(unittest.IsolatedAsyncioTestCase):
+    async def restart(self, error):
+        from smelite.monitor import Engine
+
+        engine = SimpleNamespace(run_command=mock.AsyncMock(side_effect=error))
+        return await Engine.asterisk_action(engine, "asterisk_restart", "1998", "admin")
+
+    async def test_drop_after_sending_counts_as_restarting(self):
+        self.assertIn("restarting", await self.restart(ami.AmiError("AMI connection dropped")))
+
+    async def test_no_connection_is_an_error(self):
+        for error in (ami.AmiDown("down"), ami.AmiNotSent("AMI connect failed")):
+            with self.assertRaises(ami.AmiNotSent):
+                await self.restart(error)
+
+    async def test_failed_connect_is_reported_as_not_sent(self):
+        pool = ami.AmiPool()
+        host = {"host": "192.0.2.1", "port": 5038, "user": "admin", "password": "x"}
+        with mock.patch.object(ami.AmiClient, "connect", mock.AsyncMock(side_effect=ami.AmiError("refused"))):
+            with self.assertRaises(ami.AmiNotSent):
+                await pool.call(host, mock.AsyncMock())
+
+
 if __name__ == "__main__":
     unittest.main()

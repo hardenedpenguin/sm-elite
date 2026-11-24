@@ -401,6 +401,27 @@ def _recent_failures(engine: Engine, peer: str, now: float) -> list[float]:
     return [stamp for stamp in failures.get(peer, []) if now - stamp < FAILURE_WINDOW]
 
 
+def _reserve_attempt(engine: Engine, peer: str, now: float) -> bool:
+    """Count an attempt as failed before checking it, or refuse when the peer is at the limit.
+
+    The check and the write happen with no await between them, so requests
+    that verify at the same time each take their own slot. A successful login
+    clears the peer's count.
+    """
+    recent = _recent_failures(engine, peer, now)
+    if len(recent) >= FAILURE_LIMIT:
+        return False
+    engine.login_failures[peer] = recent + [now]
+    return True
+
+
+def _release_attempt(engine: Engine, peer: str, now: float) -> None:
+    """Give back a slot taken by _reserve_attempt once the password proved right."""
+    stamps = engine.login_failures.get(peer)
+    if stamps and now in stamps:
+        stamps.remove(now)
+
+
 def _cookie_name(request: web.Request) -> str:
     """HTTPS and plain HTTP on the same host keep separate sessions.
 
@@ -447,15 +468,12 @@ async def login(request: web.Request) -> web.Response:
     engine: Engine = request.app["engine"]
     peer = request.remote or "local"
     now = time.time()
-    recent = _recent_failures(engine, peer, now)
-    if len(recent) >= FAILURE_LIMIT:
+    if not _reserve_attempt(engine, peer, now):
         return web.json_response({"error": "too many login attempts"}, status=429)
     body = await _json(request)
     name = str(body.get("username") or "").strip()
     user = await engine.auth.verify_async(name, str(body.get("password") or ""))
     if user is None:
-        recent.append(now)
-        engine.login_failures[peer] = recent
         # An unknown name may be a password typed into the wrong box, so it is not kept.
         known = engine.auth.get_user(name) is not None
         _log(request, "login failed", user=name if known else "", detail="" if known else "unknown username")
@@ -564,13 +582,12 @@ async def account_password(request: web.Request) -> web.Response:
         return web.json_response({"error": "login required"}, status=401)
     peer = request.remote or "local"
     now = time.time()
-    recent = _recent_failures(engine, peer, now)
-    if len(recent) >= FAILURE_LIMIT:
+    if not _reserve_attempt(engine, peer, now):
         return web.json_response({"error": "too many attempts; wait a few minutes"}, status=429)
     body = await _json(request)
     if await engine.auth.verify_async(user.name, str(body.get("current") or "")) is None:
-        engine.login_failures[peer] = recent + [now]
         return web.json_response({"error": "your current password is not right"}, status=403)
+    _release_attempt(engine, peer, now)
     engine.auth.set_password(user.name, str(body.get("password") or ""), keep_token=request["token"])
     _log(request, "change password")
     return web.json_response({"ok": True})

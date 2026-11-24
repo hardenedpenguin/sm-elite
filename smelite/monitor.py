@@ -24,7 +24,7 @@ from .schedule import ACTIONS, Job, ScheduleStore, due_minutes
 from .admin import ASTERISK_ACTIONS, AdminTools
 from .dvswitch import DVSwitch
 from .sounds import POLITE_WAIT, SCOPES, Sounds
-from .ami import AmiDown, AmiError, AmiPool
+from .ami import AmiDown, AmiError, AmiNotSent, AmiPool
 from .astdb import NodeDirectory
 from .auth import AuthStore
 from .config import Settings
@@ -606,7 +606,11 @@ class Engine:
         log.warning("admin: %s ran %r via node %s", actor, command, local)
         try:
             result = await self.run_command(command, local)
+        except AmiNotSent:
+            # No connection, so nothing restarted; say so instead of reporting success.
+            raise
         except AmiError:
+            # A restart drops the manager connection as it takes effect.
             if action != "asterisk_restart":
                 raise
             return done

@@ -232,7 +232,11 @@ class AuthStore(SQLiteStore):
         ok = await asyncio.to_thread(_verify_password, password, stored)
         if row is None or not ok:
             return None
-        return self._user_from_row(row)
+        # The account may have been removed, reset, or changed while the hash ran.
+        current = self._db.execute("SELECT * FROM users WHERE name = ?", (name,)).fetchone()
+        if current is None or current["password"] != stored:
+            return None
+        return self._user_from_row(current)
 
     def prune_sessions(self, now: int | None = None) -> int:
         """Delete sessions that have expired; returns how many went."""
