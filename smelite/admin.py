@@ -49,13 +49,16 @@ def tail_lines(path: Path, lines: int, block: int = 64 * 1024) -> str:
     with path.open("rb") as handle:
         handle.seek(0, 2)
         end = handle.tell()
-        data = b""
-        while end > 0 and data.count(b"\n") <= lines:
+        blocks: list[bytes] = []
+        newlines = 0
+        while end > 0 and newlines <= lines:
             start = max(0, end - block)
             handle.seek(start)
-            data = handle.read(end - start) + data
+            chunk = handle.read(end - start)
+            blocks.append(chunk)
+            newlines += chunk.count(b"\n")
             end = start
-    text = data.decode("utf-8", errors="replace")
+    text = b"".join(reversed(blocks)).decode("utf-8", errors="replace")
     return "".join(deque(text.splitlines(keepends=True), maxlen=lines))
 
 

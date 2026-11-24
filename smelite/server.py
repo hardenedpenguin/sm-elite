@@ -994,8 +994,12 @@ def _admin(request: web.Request):
 
 async def _confirm_password(request: web.Request, user, body: dict) -> None:
     engine: Engine = request.app["engine"]
-    if await engine.auth.verify_async(user.name, str(body.get("password") or "")) is None:
+    confirmed = await engine.auth.verify_async(user.name, str(body.get("password") or ""))
+    if confirmed is None:
         raise web.HTTPForbidden(text=json.dumps({"error": "password is incorrect"}), content_type="application/json")
+    # verify_async returns the account as it is now; it may have been demoted meanwhile.
+    if not confirmed.allows("admin"):
+        raise web.HTTPForbidden(text=json.dumps({"error": "admin required"}), content_type="application/json")
 
 
 async def admin_info(request: web.Request) -> web.Response:

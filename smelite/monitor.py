@@ -252,7 +252,10 @@ class Engine:
                 if cfg is not None:
                     interval = min(interval, max(0.4, cfg.poll_interval))
             # Hosts are polled side by side; nodes on one host still go in order.
-            await asyncio.gather(*(self._poll_group(group, watched) for group in self._host_groups(polled)))
+            # The task group cancels and awaits the other hosts if one fails.
+            async with asyncio.TaskGroup() as group_tasks:
+                for group in self._host_groups(polled):
+                    group_tasks.create_task(self._poll_group(group, watched))
             self._prune()
             await asyncio.sleep(interval)
 

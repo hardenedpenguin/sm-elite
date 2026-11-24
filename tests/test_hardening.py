@@ -365,5 +365,66 @@ class RestartResultTests(unittest.IsolatedAsyncioTestCase):
                 await pool.call(host, mock.AsyncMock())
 
 
+class LongLineTailTests(unittest.TestCase):
+    def test_few_newlines_in_many_blocks(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "messages"
+            path.write_bytes(b"a" * 5000 + b"\n" + b"b" * 5000 + b"\n" + b"c" * 300)
+            self.assertEqual(tail_lines(path, 2, block=64), "b" * 5000 + "\n" + "c" * 300)
+            self.assertEqual(tail_lines(path, 5, block=64).count("\n"), 2)
+
+
+class DemotedConfirmTests(unittest.IsolatedAsyncioTestCase):
+    async def test_demoted_during_the_check_is_refused(self):
+        from smelite.server import _confirm_password
+
+        async def demoted(name, password):
+            return User(name, "operator", None)
+
+        request = SimpleNamespace(app={"engine": SimpleNamespace(auth=SimpleNamespace(verify_async=demoted))})
+        with self.assertRaises(web.HTTPForbidden) as caught:
+            await _confirm_password(request, User("admin", "admin", None), {"password": "right"})
+        self.assertIn("admin required", caught.exception.text)
+
+    async def test_still_admin_is_confirmed(self):
+        from smelite.server import _confirm_password
+
+        async def still_admin(name, password):
+            return User(name, "admin", None)
+
+        request = SimpleNamespace(app={"engine": SimpleNamespace(auth=SimpleNamespace(verify_async=still_admin))})
+        await _confirm_password(request, User("admin", "admin", None), {"password": "right"})
+
+
+class PollGroupCancelTests(unittest.IsolatedAsyncioTestCase):
+    async def test_failing_host_cancels_the_others(self):
+        from smelite.monitor import Engine
+
+        cancelled = asyncio.Event()
+
+        async def poll_group(group, watched):
+            if group == ["1"]:
+                await asyncio.sleep(0.01)
+                raise RuntimeError("history store failed")
+            try:
+                await asyncio.sleep(10)
+            except asyncio.CancelledError:
+                cancelled.set()
+                raise
+
+        engine = SimpleNamespace(
+            stop=asyncio.Event(),
+            hub=SimpleNamespace(wanted=lambda: {"1", "2"}),
+            _recording=lambda: False,
+            settings=SimpleNamespace(node_by_id=lambda node: None),
+            _host_groups=lambda nodes: [["1"], ["2"]],
+            _poll_group=poll_group,
+            _prune=lambda: None,
+        )
+        with self.assertRaises(BaseExceptionGroup):
+            await asyncio.wait_for(Engine._poll_loop(engine), 2)
+        self.assertTrue(cancelled.is_set())
+
+
 if __name__ == "__main__":
     unittest.main()
