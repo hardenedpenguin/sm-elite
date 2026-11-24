@@ -8,12 +8,17 @@ XStat and SawStat today.
 from __future__ import annotations
 
 import asyncio
+import time
 import uuid
 from typing import Any
 
 
 class AmiError(Exception):
     """The manager connection failed or rejected a command."""
+
+
+class AmiDown(AmiError):
+    """The host failed to connect a moment ago and is not being retried yet."""
 
 
 class AmiClient:
@@ -126,12 +131,25 @@ class AmiClient:
         return raw.decode("utf-8", "replace")
 
 
-class AmiPool:
-    """Reuse one logged-in session per host. A lock keeps commands in order."""
+RETRY_AFTER = 15.0
 
-    def __init__(self):
+
+class AmiPool:
+    """Reuse one logged-in session per host. A lock keeps commands in order.
+
+    After a failed connect the host is left alone for ``retry_after`` seconds,
+    so one unreachable Asterisk does not hold up every poll with a timeout.
+    """
+
+    def __init__(self, retry_after: float = RETRY_AFTER):
         self._clients: dict[tuple, AmiClient] = {}
         self._locks: dict[tuple, asyncio.Lock] = {}
+        self._down: dict[tuple, float] = {}
+        self.retry_after = retry_after
+
+    @staticmethod
+    def key(host: dict[str, Any]) -> tuple:
+        return (host["host"], int(host["port"]), host["user"])
 
     def _lock(self, key: tuple) -> asyncio.Lock:
         lock = self._locks.get(key)
@@ -141,11 +159,19 @@ class AmiPool:
         return lock
 
     async def call(self, host: dict[str, Any], builder) -> str:
-        key = (host["host"], int(host["port"]), host["user"])
+        key = self.key(host)
         async with self._lock(key):
             client = self._clients.get(key)
             if client is None or not client.alive:
-                client = await AmiClient.connect(host["host"], int(host["port"]), host["user"], host["password"])
+                failed_at = self._down.get(key)
+                if failed_at is not None and time.monotonic() - failed_at < self.retry_after:
+                    raise AmiDown(f"AMI at {host['host']}:{host['port']} is down; retrying shortly")
+                try:
+                    client = await AmiClient.connect(host["host"], int(host["port"]), host["user"], host["password"])
+                except AmiError:
+                    self._down[key] = time.monotonic()
+                    raise
+                self._down.pop(key, None)
                 self._clients[key] = client
             try:
                 return await builder(client)

@@ -41,6 +41,24 @@ def _stamp_iso(stamp: str) -> str:
     return when.isoformat()
 
 
+def tail_lines(path: Path, lines: int, block: int = 64 * 1024) -> str:
+    """The last ``lines`` lines of a file, read backwards from the end.
+
+    The Asterisk log can be hundreds of megabytes, so it is never read whole.
+    """
+    with path.open("rb") as handle:
+        handle.seek(0, 2)
+        end = handle.tell()
+        data = b""
+        while end > 0 and data.count(b"\n") <= lines:
+            start = max(0, end - block)
+            handle.seek(start)
+            data = handle.read(end - start) + data
+            end = start
+    text = data.decode("utf-8", errors="replace")
+    return "".join(deque(text.splitlines(keepends=True), maxlen=lines))
+
+
 class AdminError(ValueError):
     """An admin request was refused."""
 
@@ -223,6 +241,7 @@ class AdminTools:
             out, err = await asyncio.wait_for(proc.communicate(stdin or b""), timeout=30)
         except asyncio.TimeoutError as exc:
             proc.kill()
+            await proc.wait()
             raise AdminError("admin helper timed out") from exc
         if proc.returncode != 0:
             message = err.decode(errors="replace").strip() or f"admin helper failed ({proc.returncode})"
@@ -234,7 +253,6 @@ class AdminTools:
             return "[demo] Asterisk log lines appear here on a real node."
         lines = max(20, min(lines, 2000))
         try:
-            with self.log_file.open("r", encoding="utf-8", errors="replace") as handle:
-                return "".join(deque(handle, maxlen=lines))
+            return tail_lines(self.log_file, lines)
         except OSError as exc:
             raise AdminError(f"cannot read {self.log_file}: {exc.strerror}") from exc

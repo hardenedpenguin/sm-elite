@@ -24,7 +24,7 @@ from .schedule import ACTIONS, Job, ScheduleStore, due_minutes
 from .admin import ASTERISK_ACTIONS, AdminTools
 from .dvswitch import DVSwitch
 from .sounds import POLITE_WAIT, SCOPES, Sounds
-from .ami import AmiError, AmiPool
+from .ami import AmiDown, AmiError, AmiPool
 from .astdb import NodeDirectory
 from .auth import AuthStore
 from .config import Settings
@@ -247,19 +247,33 @@ class Engine:
                 await asyncio.sleep(1)
                 continue
             interval = 1.0
-            for node_id in sorted(polled):
+            for node_id in polled:
                 cfg = self.settings.node_by_id(node_id)
                 if cfg is not None:
                     interval = min(interval, max(0.4, cfg.poll_interval))
-                snapshot = await self._poll_node(node_id)
-                await self.hub.publish_node(snapshot)
-                await self._record(snapshot)
-                if cfg is not None and node_id == cfg.node and node_id in watched:
-                    for voter_node in cfg.voters:
-                        payload = await self._poll_voter(voter_node)
-                        await self.hub.publish_voter(voter_node, payload)
+            # Hosts are polled side by side; nodes on one host still go in order.
+            await asyncio.gather(*(self._poll_group(group, watched) for group in self._host_groups(polled)))
             self._prune()
             await asyncio.sleep(interval)
+
+    def _host_groups(self, nodes: set[str]) -> list[list[str]]:
+        groups: dict[Any, list[str]] = {}
+        for node_id in sorted(nodes):
+            cfg = self.settings.node_by_id(node_id)
+            key = AmiPool.key(cfg.ami()) if cfg is not None and not self.settings.demo else ("node", node_id)
+            groups.setdefault(key, []).append(node_id)
+        return list(groups.values())
+
+    async def _poll_group(self, nodes: list[str], watched: set[str]) -> None:
+        for node_id in nodes:
+            cfg = self.settings.node_by_id(node_id)
+            snapshot = await self._poll_node(node_id)
+            await self.hub.publish_node(snapshot)
+            await self._record(snapshot)
+            if cfg is not None and node_id == cfg.node and node_id in watched:
+                for voter_node in cfg.voters:
+                    payload = await self._poll_voter(voter_node)
+                    await self.hub.publish_voter(voter_node, payload)
 
     async def _record(self, snapshot: dict) -> None:
         if not self._recording():
@@ -313,7 +327,8 @@ class Engine:
         try:
             xstat, saw, uptime = await self.pool.call(cfg.ami(), read)
         except AmiError as exc:
-            log.warning("AMI poll failed for %s: %s", node_id, exc)
+            # The failed connect was already logged; skip the repeats while waiting to retry.
+            (log.debug if isinstance(exc, AmiDown) else log.warning)("AMI poll failed for %s: %s", node_id, exc)
             return _offline(node_id, desc, "Asterisk manager is not answering")
         if "response: error" in xstat.lower() and "conn:" not in xstat.lower():
             return _offline(node_id, desc, "node did not return status")

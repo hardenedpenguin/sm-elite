@@ -49,7 +49,7 @@ ICONS = {
 
 
 def create_app(engine: Engine) -> web.Application:
-    app = web.Application(middlewares=[forwarded, guard])
+    app = web.Application(middlewares=[forwarded, headers, guard])
     app["engine"] = engine
     app.on_startup.append(_start)
     app.on_shutdown.append(_close_sockets)
@@ -186,14 +186,45 @@ async def forwarded(request: web.Request, handler):
     return await handler(request)
 
 
+def _cross_origin(request: web.Request) -> bool:
+    """True when the browser says the request came from another site's page."""
+    origin = request.headers.get("Origin")
+    return bool(origin) and urlparse(origin).netloc != request.host
+
+
+SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "same-origin",
+    "X-Frame-Options": "SAMEORIGIN",
+    "Content-Security-Policy": (
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self'; "
+        "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'"
+    ),
+}
+
+
+@web.middleware
+async def headers(request: web.Request, handler):
+    """Browser hardening headers, also when the dashboard is reached without Apache."""
+    try:
+        response = await handler(request)
+    except web.HTTPException as exc:
+        exc.headers.update({key: value for key, value in SECURITY_HEADERS.items() if key not in exc.headers})
+        raise
+    if not response.prepared:
+        for key, value in SECURITY_HEADERS.items():
+            response.headers.setdefault(key, value)
+    return response
+
+
 @web.middleware
 async def guard(request: web.Request, handler):
     engine: Engine = request.app["engine"]
     request["token"] = None
     request["user"] = _session_user(engine, request)
-    if request.method in {"POST", "PUT", "DELETE", "PATCH"}:
-        origin = request.headers.get("Origin")
-        if origin and urlparse(origin).netloc != request.host:
+    if request.method in {"POST", "PUT", "DELETE", "PATCH"} or request.path == "/ws":
+        if _cross_origin(request):
             return web.json_response({"error": "cross-origin request was rejected"}, status=403)
     if engine.settings.public == "none" and request.path.startswith("/api/"):
         open_paths = {"/api/bootstrap", "/api/health", "/api/login", "/api/setup"}
@@ -358,6 +389,18 @@ async def health(request: web.Request) -> web.Response:
     })
 
 
+FAILURE_WINDOW = 300
+FAILURE_LIMIT = 8
+
+
+def _recent_failures(engine: Engine, peer: str, now: float) -> list[float]:
+    """Failed attempts from ``peer`` in the last five minutes; stale peers are dropped."""
+    failures = engine.login_failures
+    for other in [key for key, stamps in failures.items() if not stamps or now - stamps[-1] >= FAILURE_WINDOW]:
+        failures.pop(other, None)
+    return [stamp for stamp in failures.get(peer, []) if now - stamp < FAILURE_WINDOW]
+
+
 def _cookie_name(request: web.Request) -> str:
     """HTTPS and plain HTTP on the same host keep separate sessions.
 
@@ -381,8 +424,8 @@ async def setup(request: web.Request) -> web.Response:
     if _setup_code_required(engine):
         peer = request.remote or "local"
         now = time.time()
-        recent = [stamp for stamp in engine.login_failures.get(peer, []) if now - stamp < 300]
-        if len(recent) >= 8:
+        recent = _recent_failures(engine, peer, now)
+        if len(recent) >= FAILURE_LIMIT:
             return web.json_response({"error": "too many attempts; wait a few minutes"}, status=429)
         if not setup_code_matches(_setup_code_path(engine), str(body.get("code") or "")):
             engine.login_failures[peer] = recent + [now]
@@ -393,7 +436,7 @@ async def setup(request: web.Request) -> web.Response:
     _setup_code_path(engine).unlink(missing_ok=True)
     log.warning("setup: created admin account %s", name)
     _log(request, "create admin account", user=name)
-    user = engine.auth.verify(name, password)
+    user = engine.auth.get_user(name)
     token = engine.auth.create_session(user)
     response = web.json_response({"user": _user_payload(user)})
     _set_cookie(response, request, token)
@@ -404,12 +447,12 @@ async def login(request: web.Request) -> web.Response:
     engine: Engine = request.app["engine"]
     peer = request.remote or "local"
     now = time.time()
-    recent = [stamp for stamp in engine.login_failures.get(peer, []) if now - stamp < 300]
-    if len(recent) >= 8:
+    recent = _recent_failures(engine, peer, now)
+    if len(recent) >= FAILURE_LIMIT:
         return web.json_response({"error": "too many login attempts"}, status=429)
     body = await _json(request)
     name = str(body.get("username") or "").strip()
-    user = engine.auth.verify(name, str(body.get("password") or ""))
+    user = await engine.auth.verify_async(name, str(body.get("password") or ""))
     if user is None:
         recent.append(now)
         engine.login_failures[peer] = recent
@@ -521,11 +564,11 @@ async def account_password(request: web.Request) -> web.Response:
         return web.json_response({"error": "login required"}, status=401)
     peer = request.remote or "local"
     now = time.time()
-    recent = [stamp for stamp in engine.login_failures.get(peer, []) if now - stamp < 300]
-    if len(recent) >= 8:
+    recent = _recent_failures(engine, peer, now)
+    if len(recent) >= FAILURE_LIMIT:
         return web.json_response({"error": "too many attempts; wait a few minutes"}, status=429)
     body = await _json(request)
-    if engine.auth.verify(user.name, str(body.get("current") or "")) is None:
+    if await engine.auth.verify_async(user.name, str(body.get("current") or "")) is None:
         engine.login_failures[peer] = recent + [now]
         return web.json_response({"error": "your current password is not right"}, status=403)
     engine.auth.set_password(user.name, str(body.get("password") or ""), keep_token=request["token"])
@@ -627,8 +670,10 @@ async def favorites_watch(request: web.Request) -> web.Response:
         load_file(engine.settings.favorites_dir, name)
     except FileNotFoundError:
         return web.json_response({"error": "favorites file was not found"}, status=404)
-    engine.favorite_file = name
-    return web.json_response({"ok": True, "file": name})
+    # The scanner is shared by every browser, so only operators may move it.
+    if _require(request, "operator") is not None:
+        engine.favorite_file = name
+    return web.json_response({"ok": True, "file": name, "watching": engine.favorite_file})
 
 
 async def heard(request: web.Request) -> web.Response:
@@ -930,9 +975,9 @@ def _admin(request: web.Request):
     return user
 
 
-def _confirm_password(request: web.Request, user, body: dict) -> None:
+async def _confirm_password(request: web.Request, user, body: dict) -> None:
     engine: Engine = request.app["engine"]
-    if engine.auth.verify(user.name, str(body.get("password") or "")) is None:
+    if await engine.auth.verify_async(user.name, str(body.get("password") or "")) is None:
         raise web.HTTPForbidden(text=json.dumps({"error": "password is incorrect"}), content_type="application/json")
 
 
@@ -959,7 +1004,7 @@ async def admin_file_save(request: web.Request) -> web.Response:
     engine: Engine = request.app["engine"]
     user = _admin(request)
     body = await _json(request)
-    _confirm_password(request, user, body)
+    await _confirm_password(request, user, body)
     name = str(body.get("name") or "")
     backup = await engine.admin.write(name, str(body.get("text") or ""), str(body.get("sha256") or ""), user.name)
     _log(request, "save file", target=name, detail=f"backup {backup}")
@@ -998,7 +1043,7 @@ async def admin_restore(request: web.Request) -> web.Response:
     engine: Engine = request.app["engine"]
     user = _admin(request)
     body = await _json(request)
-    _confirm_password(request, user, body)
+    await _confirm_password(request, user, body)
     name = str(body.get("name") or "")
     stamp = str(body.get("stamp") or "")
     backup = await engine.admin.restore(name, stamp, str(body.get("sha256") or ""), user.name)
@@ -1025,7 +1070,7 @@ async def admin_action(request: web.Request) -> web.Response:
     engine: Engine = request.app["engine"]
     user = _admin(request)
     body = await _json(request)
-    _confirm_password(request, user, body)
+    await _confirm_password(request, user, body)
     action = str(body.get("action") or "")
     if action in POWER_ACTIONS:
         _log(request, ADMIN_ACTION_LABELS[action])
@@ -1055,7 +1100,7 @@ async def settings_backup(request: web.Request) -> web.Response:
     engine: Engine = request.app["engine"]
     user = _admin(request)
     body = await _json(request)
-    _confirm_password(request, user, body)
+    await _confirm_password(request, user, body)
     host = socket.gethostname()
     blob = backup.create(engine.settings.config_dir, _stores(engine), __version__, host)
     _log(request, "download settings backup", detail=f"{len(blob)} bytes")
@@ -1108,7 +1153,7 @@ async def settings_restore(request: web.Request) -> web.Response:
     engine: Engine = request.app["engine"]
     user = _admin(request)
     fields, blob = await _backup_upload(request)
-    _confirm_password(request, user, fields)
+    await _confirm_password(request, user, fields)
     wanted = {part for part in fields.get("parts", "").split(",") if part}
     if not wanted:
         raise ValueError("pick what to restore")
@@ -1276,7 +1321,7 @@ async def command(request: web.Request) -> web.Response:
     engine: Engine = request.app["engine"]
     body = await _json(request)
     local = str(body.get("node") or "").strip()
-    if not user.can_command(local):
+    if local not in engine.settings.monitored_ids() or not user.can_command(local):
         return web.json_response({"error": "not allowed on this node"}, status=403)
     action = str(body.get("action") or "")
     target = str(body.get("target") or "").strip() or None
@@ -1299,17 +1344,12 @@ async def command(request: web.Request) -> web.Response:
             drop = action_command("disconnect_all", local)
             await engine.run_command(drop, local)
             _log(request, "disconnect all", node=local, detail=f"before {action.replace('_', ' ')} {target}")
-            await asyncio_sleep()
+            await asyncio.sleep(0.5)
     detail = await engine.run_command(built, local)
     label = "command" if action == "custom" else action.replace("_", " ")
     extra = "permanent" if body.get("permanent") and action in {"connect", "monitor", "local_monitor"} else ""
     _log(request, label, node=local, target=target or "", detail=" · ".join(filter(None, [extra, built])))
     return web.json_response({"ok": True, "command": built, "detail": detail[:4000]})
-
-
-async def asyncio_sleep() -> None:
-    import asyncio
-    await asyncio.sleep(0.5)
 
 
 async def websocket(request: web.Request) -> web.WebSocketResponse:
