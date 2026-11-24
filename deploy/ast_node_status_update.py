@@ -2,8 +2,9 @@
 """Publish uptime, load, temperature, weather, disk, and weather alerts as
 app_rpt variables, which the node status block on each SM-Elite card shows.
 
-From supermon-ng (MIT, Jory A. Pratt), run by sm-elite-node-status.timer.
-Settings: /etc/sm-elite/node_info.ini (override with SMELITE_NODE_INFO).
+From supermon-ng (MIT, Jory A. Pratt), run by sm-elite-node-status.timer as
+the asterisk user. Settings: /etc/sm-elite/node_info.ini (override with
+SMELITE_NODE_INFO).
 """
 
 import os
@@ -600,8 +601,8 @@ NODE_RE = re.compile(r"^[0-9]{1,8}$")
 def clean_nodes(values):
     """Node numbers from [general] NODE, in order, without repeats.
 
-    This script runs as root and the dashboard admin can edit node_info.ini,
-    so anything that is not a plain node number is dropped here.
+    The dashboard admin can edit node_info.ini and the values reach the
+    Asterisk CLI, so anything that is not a plain node number is dropped here.
     """
     found = []
     for value in values:

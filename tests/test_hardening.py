@@ -70,6 +70,21 @@ class NodeStatusInputTests(unittest.TestCase):
         run.assert_not_called()
 
 
+class NodeStatusUnitTests(unittest.TestCase):
+    UNIT = STATUS_SCRIPT.parent.parent / "debian" / "sm-elite.sm-elite-node-status.service"
+
+    def test_updater_runs_as_asterisk_not_root(self):
+        import configparser
+
+        unit = configparser.ConfigParser(strict=False, interpolation=None)
+        unit.optionxform = str
+        unit.read(self.UNIT)
+        service = unit["Service"]
+        self.assertEqual(service["User"], "asterisk")
+        self.assertEqual(service["Group"], "asterisk")
+        self.assertEqual(service["NoNewPrivileges"], "yes")
+
+
 class AuthTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

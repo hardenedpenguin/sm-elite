@@ -3,9 +3,25 @@ Description=SM-Elite node status update (uptime, weather, alerts)
 After=network-online.target asterisk.service
 Wants=network-online.target
 ConditionPathExists=/etc/sm-elite/node_info.ini
+ConditionPathExists=/usr/sbin/asterisk
 
 [Service]
 Type=oneshot
+# The same account Asterisk runs as on ASL3: it can reach asterisk.ctl and read
+# rpt.conf, and needs nothing from root. node_info.ini is editable from the
+# dashboard, so the updater must not hold more than Asterisk itself does.
+User=asterisk
+Group=asterisk
+NoNewPrivileges=yes
+ProtectSystem=full
+ProtectHome=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+LockPersonality=yes
 # supermon-ng publishes the same variables; let it keep doing so while its timer is on.
 ExecCondition=/bin/sh -c '! systemctl --quiet is-enabled supermon-ng-node-status.timer 2>/dev/null'
 ExecStart=/usr/bin/python3 /usr/lib/sm-elite/ast_node_status_update.py
